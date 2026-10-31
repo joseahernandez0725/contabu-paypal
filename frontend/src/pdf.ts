@@ -8,7 +8,10 @@ const usd = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
 // Monto en estilo contable: los gastos entre paréntesis. (1234.5) para restas.
-const acct = (n: number, expense = false) => (expense ? `(${usd(Math.abs(n))})` : usd(n));
+// 31-oct: un gasto NEGATIVO (una cuenta que es puro reembolso de proveedor) no resta: va sin
+// paréntesis, el signo contrario de su columna. Antes `Math.abs` lo pintaba igual que un gasto.
+const acct = (n: number, expense = false) =>
+  expense ? (n < 0 ? usd(-n) : `(${usd(n)})`) : usd(n);
 
 export function exportIncomeStatementPdf(
   companyName: string,
@@ -97,6 +100,21 @@ export function exportIncomeStatementPdf(
   const pending = u?.count ?? 0;
   row(pending > 0 ? "Net Income (before pending items)" : "Net Income",
       is.net_income, { strong: true, big: true });
+
+  // Filas del resultado sin dirección del banco (31-oct): ya están arriba, en la dirección natural
+  // de su sección; se declaran en una línea, igual que lo Pendiente.
+  const unknownN = is.direction_unknown_count ?? 0;
+  if (unknownN > 0) {
+    doc.setFont("helvetica", "normal").setFontSize(8.5).setTextColor(120);
+    doc.text(
+      `${unknownN} transaction${unknownN === 1 ? "" : "s"} (${usd(is.direction_unknown_amount ?? 0)}) ` +
+        (unknownN === 1
+          ? "with no bank direction is counted in its section's usual direction (income in, costs out)."
+          : "with no bank direction are counted in their section's usual direction (income in, costs out)."),
+      L, y - 10, { maxWidth: R - L },
+    );
+    y += 10;
+  }
 
   // Bloque de lo Pendiente: fuera de la aritmética, en CAJA (entró/salió). Sin `account_type` no se
   // puede saber si suma o resta, así que no se presenta como resultado ni se reparte por sección.

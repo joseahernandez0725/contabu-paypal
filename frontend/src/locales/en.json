@@ -112,6 +112,8 @@
     "pendingUnknown": "Direction not reported by the bank",
     "pendingNetCash": "Net effect on cash",
     "pendingHint": "Classify them in the sheet — with a rule or by hand — and this block disappears.",
+    "directionUnknown_one": "1 transaction ({{amount}}) has no bank direction: it is counted in its section's usual direction (income in, costs out).",
+    "directionUnknown_other": "{{count}} transactions ({{amount}}) have no bank direction: they are counted in their section's usual direction (income in, costs out).",
     "pendingBadge_one": "{{count}} pending transaction is not in this number",
     "pendingBadge_other": "{{count}} pending transactions are not in this number",
     "nothingClassified": "Nothing in this book is classified yet.",

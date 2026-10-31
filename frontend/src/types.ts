@@ -118,4 +118,8 @@ export interface IncomeStatement {
   breakdown?: Record<string, CategoryAmount[]>;
   // Opcional por compatibilidad: un reporte CERRADO antes de la FASE 12 no lo tiene.
   uncategorized?: Uncategorized;
+  // Filas del resultado sin dirección del banco (31-oct): YA están en su sección, en la dirección
+  // natural; se declaran aparte. Opcionales: los reportes cerrados antes no las traen.
+  direction_unknown_count?: number;
+  direction_unknown_amount?: number;
 }

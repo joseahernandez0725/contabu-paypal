@@ -133,6 +133,19 @@ function CompactPending({ u, open, onToggle }: { u: Uncategorized; open: boolean
   );
 }
 
+// Filas del resultado SIN dirección del banco (31-oct): ya cuentan en la dirección natural de su
+// sección; se dice en una línea discreta, igual que lo Pendiente se declara. Con 0 no se dibuja nada.
+function DirectionUnknownNote({ data }: { data: IS }) {
+  const { t } = useTranslation();
+  const n = data.direction_unknown_count ?? 0;
+  if (n === 0) return null;
+  return (
+    <p className="mt-2 text-xs text-slate-500">
+      {t("pnl.directionUnknown", { count: n, amount: money(data.direction_unknown_amount ?? 0) })}
+    </p>
+  );
+}
+
 // Cabecera plegada de una sección con cuentas (Revenue, COGS, Operating expenses): el total se ve
 // siempre, un clic despliega sus cuentas (`CatLines`). Sin cuentas que mostrar, no hay nada que
 // desplegar: la fila queda como un total fijo, sin la flecha.
@@ -272,7 +285,8 @@ export default function IncomeStatement({ data, bare = false, compact = false }:
           open={!!open.other} onToggle={() => toggle("other")}
         />
         <CompactTotal big label={PNL.netIncome} value={data.net_income} suffix={beforePending} />
-        {u && <CompactPending u={u} open={!!open.pending} onToggle={() => toggle("pending")} />}
+        <DirectionUnknownNote data={data} />
+        {u &&<CompactPending u={u} open={!!open.pending} onToggle={() => toggle("pending")} />}
       </div>
     );
   }
@@ -310,6 +324,7 @@ export default function IncomeStatement({ data, bare = false, compact = false }:
         </span>
         <span className="font-bold text-brand-green text-lg tabular-nums">{money(data.net_income)}</span>
       </div>
+      <DirectionUnknownNote data={data} />
 
       {u && <PendingBlock u={u} />}
     </div>

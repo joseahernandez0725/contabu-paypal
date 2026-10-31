@@ -5,20 +5,48 @@ REGLA DE ORO: los números los calcula PostgreSQL (SUM, COUNT, GROUP BY),
 no la IA. Aquí se arma el estado de resultados (P&L) a partir de las
 transacciones ya categorizadas (account_type).
 
-Convención: `amount` es magnitud positiva; el signo lo decide account_type.
+Convención: `amount` es magnitud positiva; la SECCIÓN la decide account_type y, dentro de la
+sección, la dirección del banco (`is_inflow`) dice si suma o resta: ver `signed_amount()`.
 """
 
 from datetime import date
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import func
+from sqlalchemy import and_, case, func, or_
 from sqlmodel import Session, select
 
 from db import engine
 from models import AccountType, Company, CompanyCategory, Transaction
 
 ZERO = Decimal("0.00")
+
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# EL SIGNO DENTRO DE LA SECCIÓN (Entregables, 31-oct; Buzón 18-oct y 31-oct)
+# Cada sección tiene una dirección NATURAL: los ingresos ENTRAN (REVENUE, OTHER_INCOME) y los
+# costos y gastos SALEN (COGS, OPERATING_EXPENSE, OTHER_EXPENSE). Un movimiento en la dirección
+# contraria es un contra-movimiento y RESTA de su sección: una devolución a un cliente ("Returns and
+# allowances", 1120S:1b / SchC:2) baja los ingresos; un reembolso de un proveedor baja el gasto.
+# `is_inflow` NULL (el banco no dijo la dirección) cuenta en la dirección natural, como antes; el
+# P&L lo declara aparte (`direction_unknown_*`) para que no quede escondido.
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+_INFLOW_SECTIONS = (AccountType.REVENUE, AccountType.OTHER_INCOME)
+_OUTFLOW_SECTIONS = (AccountType.COGS, AccountType.OPERATING_EXPENSE, AccountType.OTHER_EXPENSE)
+
+
+def signed_amount():
+    """`amount` con signo DENTRO de su sección, como expresión SQL: `func.sum(signed_amount())`.
+
+    + en la dirección natural de la sección, − en la contraria. Sirve para cualquier `GROUP BY`
+    (sección, categoría, mes…): el P&L la usa por sección y por (sección, categoría), y el Resumen
+    del portal del dueño (FASE 16) por (mes, sección, categoría). NON_PL y lo Pendiente quedan
+    con `amount` tal cual: no entran al P&L y su efecto en caja se calcula aparte.
+    """
+    contrary = or_(
+        and_(Transaction.account_type.in_(_INFLOW_SECTIONS), Transaction.is_inflow.is_(False)),
+        and_(Transaction.account_type.in_(_OUTFLOW_SECTIONS), Transaction.is_inflow.is_(True)),
+    )
+    return case((contrary, -Transaction.amount), else_=Transaction.amount)
 
 
 def _section_totals(
@@ -27,9 +55,9 @@ def _section_totals(
     start: Optional[date] = None,
     end: Optional[date] = None,
 ) -> dict[AccountType, Decimal]:
-    """SUM(amount) agrupado por account_type (esto lo calcula SQL), opcional por rango de fechas."""
+    """SUM con signo agrupado por account_type (esto lo calcula SQL), opcional por rango de fechas."""
     stmt = (
-        select(Transaction.account_type, func.sum(Transaction.amount))
+        select(Transaction.account_type, func.sum(signed_amount()))
         .where(Transaction.company_id == company_id)
         .group_by(Transaction.account_type)
     )
@@ -38,6 +66,31 @@ def _section_totals(
     if end is not None:
         stmt = stmt.where(Transaction.date <= end)
     return {at: total for at, total in session.exec(stmt).all() if at is not None}
+
+
+def _direction_unknown(
+    session: Session,
+    company_id: int,
+    start: Optional[date] = None,
+    end: Optional[date] = None,
+) -> tuple[int, Decimal]:
+    """Filas CON sección del P&L pero sin dirección del banco (`is_inflow` NULL): cuántas y cuánto.
+
+    Ya están dentro del resultado, en la dirección natural de su sección (`signed_amount()`); esto
+    solo las DECLARA, igual que lo Pendiente: si alguna fuera un contra-movimiento, el número cambia.
+    """
+    stmt = (
+        select(func.count(Transaction.id), func.sum(Transaction.amount))
+        .where(Transaction.company_id == company_id)
+        .where(Transaction.account_type.in_(_INFLOW_SECTIONS + _OUTFLOW_SECTIONS))
+        .where(Transaction.is_inflow.is_(None))
+    )
+    if start is not None:
+        stmt = stmt.where(Transaction.date >= start)
+    if end is not None:
+        stmt = stmt.where(Transaction.date <= end)
+    n, total = session.exec(stmt).one()
+    return n or 0, total or ZERO
 
 
 # Secciones que SÍ se desglosan por categoría en el P&L (NON_PL se excluye del estado de resultados).
@@ -53,13 +106,14 @@ def _category_breakdown(
     start: Optional[date] = None,
     end: Optional[date] = None,
 ) -> dict[str, list[dict]]:
-    """SUM(amount) agrupado por (account_type, category) — el desglose de cada sección del P&L.
+    """SUM con signo agrupado por (account_type, category) — el desglose de cada sección del P&L.
 
     Devuelve {section: [{"category": str, "amount": Decimal}, ...]} con las categorías
-    ordenadas de mayor a menor monto. Lo calcula SQL (regla de oro), no la IA.
+    ordenadas de mayor a menor monto. Lo calcula SQL (regla de oro), no la IA. Una categoría que
+    es puro contra-movimiento (p. ej. "Returns and allowances") sale en NEGATIVO.
     """
     stmt = (
-        select(Transaction.account_type, Transaction.category, func.sum(Transaction.amount))
+        select(Transaction.account_type, Transaction.category, func.sum(signed_amount()))
         .where(Transaction.company_id == company_id)
         .group_by(Transaction.account_type, Transaction.category)
     )
@@ -168,6 +222,8 @@ def income_statement(
     other_expense = t.get(AccountType.OTHER_EXPENSE, ZERO)
     net_income = operating_income + other_income - other_expense
 
+    unknown_n, unknown_amount = _direction_unknown(session, company_id, start, end)
+
     return {
         "revenue": revenue,
         "cogs": cogs,
@@ -181,6 +237,9 @@ def income_statement(
         "breakdown": _category_breakdown(session, company_id, start, end),
         # PENDIENTE: lo que no tiene sección. Fuera de la aritmética, pero visible en el reporte.
         "uncategorized": _uncategorized(session, company_id, start, end),
+        # Filas del resultado sin dirección del banco: contadas en la dirección natural, y declaradas.
+        "direction_unknown_count": unknown_n,
+        "direction_unknown_amount": unknown_amount,
     }
 
 
@@ -221,6 +280,9 @@ if __name__ == "__main__":
         u = pnl["uncategorized"]
         label = "= Net Income" if u["count"] == 0 else "= Net Income (before pending)"
         print(f"{label:24}{money(pnl['net_income'])}")
+        if pnl["direction_unknown_count"]:
+            print(f"  ({pnl['direction_unknown_count']} transactions, {money(pnl['direction_unknown_amount'])}, "
+                  "have no bank direction: counted in their section's usual direction)")
 
         # Lo Pendiente se declara SIEMPRE que exista, también en la salida de consola.
         if u["count"]:

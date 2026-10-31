@@ -115,6 +115,8 @@
     "pendingUnknown": "El banco no reportó la dirección",
     "pendingNetCash": "Efecto neto en caja",
     "pendingHint": "Clasifícalos en la Hoja —con una regla o a mano— y este bloque desaparece.",
+    "directionUnknown_one": "1 movimiento ({{amount}}) no trae la dirección del banco: se cuenta en la dirección habitual de su sección (el ingreso entra, el costo sale).",
+    "directionUnknown_other": "{{count}} movimientos ({{amount}}) no traen la dirección del banco: se cuentan en la dirección habitual de su sección (el ingreso entra, el costo sale).",
     "pendingBadge_one": "{{count}} movimiento Pendiente no está en este número",
     "pendingBadge_other": "{{count}} movimientos Pendientes no están en este número",
     "nothingClassified": "Todavía no hay nada clasificado en este libro.",
