@@ -715,3 +715,27 @@ class MerchantJudgment(SQLModel, table=True):
     context_hash: str
     model: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=_utcnow)
+
+
+# ═════════════════════════════════════════════════════════════════════════════════════════════════
+# FASE 16 — PayPal / portal del dueño (31-oct-2026)
+# ═════════════════════════════════════════════════════════════════════════════════════════════════
+
+class MonthClose(SQLModel, table=True):
+    """UN MES CERRADO por el bookkeeper (decisión de Jose, 31-oct; el "cerrar el mes = pegar como valores"
+    del 03-oct). Mientras está cerrado (`reopened_at` nulo), ninguna regla, edición ni importación cambia sus
+    movimientos (`month_close.py`: el guardián de la sesión) y el dueño ve su FOTO en el portal.
+
+    `snapshot` = los totales por (sección, categoría) del mes al cerrarlo, con signo dentro de su sección
+    (`reports.signed_amount`), y lo Pendiente declarado. El portal lee ESTO, no el libro en vivo: lo que vio el
+    dueño no cambia aunque algo falle. Reabrir no borra la fila (queda quién y cuándo); cerrar de nuevo crea otra.
+    Un solo cierre vigente por (libro, mes): índice único parcial en la migración `a7b8c9d0e1f3`.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id", index=True)   # ON DELETE CASCADE (migración)
+    month: date                                                    # el día 1 del mes
+    closed_at: datetime = Field(default_factory=_utcnow)
+    closed_by_user_id: Optional[int] = Field(default=None)         # sin FK: es historia, como `agentcall`
+    reopened_at: Optional[datetime] = Field(default=None)
+    reopened_by_user_id: Optional[int] = Field(default=None)
+    snapshot: Optional[dict] = Field(default=None, sa_column=Column(JSON))

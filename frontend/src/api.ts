@@ -70,7 +70,7 @@ export async function getMyRole(): Promise<Company["role"]> {
 export interface Member {
   id: number | null; // null = el dueño (OWNER)
   email: string | null;
-  role: "OWNER" | "MEMBER" | "VIEWER";
+  role: "OWNER" | "MEMBER" | "VIEWER" | "CLIENT"; // CLIENT = el dueño del negocio: va en su propia sección (FASE 16)
   is_owner: boolean;
   pending: boolean; // invitado que aún no inicia sesión
 }
@@ -1289,4 +1289,99 @@ export function refillDemoPool(): void {
   void authHeaders()
     .then((headers) => fetch(`${API}/api/demo/pool/refill`, { method: "POST", headers, keepalive: true }))
     .catch(() => {});
+}
+
+
+// --- Portal del dueño (FASE 16, área PayPal / portal del dueño · 31-oct-2026) --------------------------
+// Lo que el PORTAL lee (`/api/owner/...`): lo mismo para el dueño y para el bookkeeper en vista previa.
+export interface OwnerHome {
+  company: { id: number; name: string };
+  managed_by: string | null;      // el sello de la firma que lleva el libro
+  brand_color: string | null;
+  brand_logo_url: string | null;
+  preview: boolean;               // quien mira NO es el dueño (el bookkeeper): las acciones van apagadas
+  closed_months: OwnerMonth[];    // la FOTO de cada mes cerrado, el más reciente primero (Paso 2)
+  years: OwnerYear[];             // lo mismo ACUMULADO por año (SQL sobre las fotos), el más reciente primero
+}
+
+/** El año del dueño: totales, acumulado mes a mes y por categoría — todo calculado por SQL en el backend. */
+export interface OwnerYear {
+  year: number;
+  total_in: string;
+  total_out: string;
+  months: { month: string; total_in: string; total_out: string; cum_in: string; cum_out: string }[];
+  in_by_category: { category: string; amount: string; count: number }[];
+  out_by_category: { category: string; amount: string; count: number }[];
+  pending: { count: number; money_in: string; money_out: string };
+}
+
+/** Un mes cerrado, tal como lo ve el dueño: lo que entró y lo que salió por categoría (sin utilidad: no es un P&L). */
+export interface OwnerMonth {
+  month: string;                  // "2026-09"
+  closed_at: string;
+  in: { category: string; amount: string; count: number }[];
+  out: { category: string; amount: string; count: number }[];
+  total_in: string;
+  total_out: string;
+  pending: { count: number; money_in: string; money_out: string };
+}
+
+export async function getOwnerHome(): Promise<OwnerHome> {
+  const res = await fetch(`${API}/api/owner/companies/${cid()}`, { headers: await authHeaders() });
+  if (!res.ok) throw new Error("owner home failed");
+  return res.json();
+}
+
+// Lo que la CONSOLA hace con el dueño: invitarlo, verlo, quitarlo (separado del equipo).
+export interface OwnerAccess { id: number; email: string; pending: boolean }
+
+export async function getOwnerAccess(): Promise<OwnerAccess[]> {
+  const res = await fetch(`${API}/api/companies/${cid()}/owner-access`, { headers: await authHeaders() });
+  if (!res.ok) throw new Error("owner access failed");
+  return res.json();
+}
+
+/** Devuelve `warning: "team_elsewhere"` si ese correo ya es del equipo en otro lado (se invita igual).
+ *  Lanza `Error("already_on_team")` si ya es del equipo de ESTE libro (409). */
+export async function inviteOwner(email: string): Promise<OwnerAccess & { warning: string | null }> {
+  const res = await fetch(`${API}/api/companies/${cid()}/owner-access`, {
+    method: "POST",
+    headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (res.status === 409) throw new Error("already_on_team");
+  if (!res.ok) throw new Error("invite_failed");
+  return res.json();
+}
+
+export async function removeOwnerAccess(memberId: number): Promise<void> {
+  const res = await fetch(`${API}/api/companies/${cid()}/owner-access/${memberId}`, {
+    method: "DELETE", headers: await authHeaders(),
+  });
+  if (!res.ok) throw new Error("remove failed");
+}
+
+// --- Cerrar el mes (FASE 16 Paso 2) — la tarjeta "Cierre de mes" de Ajustes ---------------------------------------
+export interface BookMonth {
+  month: string;                  // "2026-09"
+  count: number;
+  pending: number;
+  status: "open" | "closed" | "current" | "waiting";   // waiting = terminó, pero siguen sus días de espera
+  closable_on: string;            // el primer día en que se puede cerrar (último día del mes + días de espera)
+  closed_at: string | null;
+  closed_by: string | null;
+  late: number;                   // movimientos que entraron DESPUÉS del cierre (no están en la foto)
+}
+
+export async function getMonths(): Promise<BookMonth[]> {
+  const res = await fetch(`${API}/api/companies/${cid()}/months`, { headers: await authHeaders() });
+  if (!res.ok) throw new Error("months failed");
+  return res.json();
+}
+
+export async function setMonthClosed(month: string, close: boolean): Promise<void> {
+  const res = await fetch(`${API}/api/companies/${cid()}/months/${month}/${close ? "close" : "reopen"}`, {
+    method: "POST", headers: await authHeaders(),
+  });
+  if (!res.ok) throw new Error(close ? "close failed" : "reopen failed");
 }

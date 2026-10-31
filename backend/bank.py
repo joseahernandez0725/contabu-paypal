@@ -46,6 +46,7 @@ from corrections import VIA_BANK_MODIFIED, record_change, snapshot
 from ingestion import ingest_parsed, make_fingerprint, mask_account
 from models import BankConnection, Company, Transaction
 from rules import check_number, load_rules, redecide_transaction
+import month_close  # FASE 16: un aviso del banco no cambia un mes CERRADO
 
 ENVIRONMENTS = {"sandbox": "https://sandbox.plaid.com", "production": "https://production.plaid.com"}
 # Errores que significan "el banco cortó / ya no hay acceso": la conexión pasa a `disconnected`.
@@ -387,6 +388,8 @@ def sync(session: Session, conn: BankConnection, company: Company) -> dict:
             continue
         if row[4] == tx.fingerprint:
             unchanged += 1             # ya está en el libro, igual
+        elif month_close.is_locked(session, tx):
+            unchanged += 1             # FASE 16: mes cerrado → se queda como se cerró (reabrir para tomar el cambio)
         else:                          # el banco cambió algo de verdad
             modified_applied += 1
             if apply_modified(session, company, tx, row, rules):

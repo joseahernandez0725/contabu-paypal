@@ -1609,5 +1609,95 @@
       "t": "What the agents found stays on the row",
       "b": "The finding, the verdict, who judged it and the web evidence from Tavily with its link. The agents' work is saved on the row: it is not paid for again."
     }
+  },
+  "owner": {
+    "nav": {
+      "summary": "Summary",
+      "accounts": "Accounts",
+      "invoices": "Invoices"
+    },
+    "managedBy": "Bookkeeping by {{name}}",
+    "yourBookkeeper": "your bookkeeper",
+    "switchBook": "Switch business",
+    "error": "Couldn't load the portal. Please try again.",
+    "summary": {
+      "meta": "Closed periods only",
+      "closedMonths_one": "closed month",
+      "closedMonths_other": "closed months",
+      "emptyTitle": "No closed periods yet",
+      "emptyBody": "When {{name}} closes a month, its income, costs and expenses by category will appear here. The current month is published once it is closed.",
+      "in": "Income",
+      "out": "Costs and expenses",
+      "total": "Total",
+      "nothing": "No transactions in this period.",
+      "pending_one": "1 uncategorized transaction (deposits {{in}}, payments {{out}}). Not included in the totals.",
+      "pending_other": "{{count}} uncategorized transactions (deposits {{in}}, payments {{out}}). Not included in the totals.",
+      "excludes": "Excludes transfers between your own accounts, capital contributions and owner draws."
+    },
+    "accounts": {
+      "title": "Connected accounts",
+      "body": "Your bank and PayPal accounts will appear here, with their last sync date."
+    },
+    "invoices": {
+      "title": "Invoices",
+      "body": "Issue invoices here and collect payment by card or PayPal. Each payment is recorded in your books automatically."
+    },
+    "preview": {
+      "title": "Preview:",
+      "body": "this is the business owner's view. Read-only.",
+      "exit": "Back to the console"
+    },
+    "access": {
+      "title": "Business owner",
+      "help": "The owner has their own portal: totals for the periods you closed, their accounts and their invoices. They don't see the income statement (P&L), the transactions or your rules. The invitation doesn't send an email yet: let them know directly.",
+      "preview": "View as the owner",
+      "none": "The owner doesn't have access yet.",
+      "placeholder": "owner@email.com",
+      "invite": "Invite",
+      "remove": "Remove access",
+      "teamElsewhere": "Invitation created. This email also belongs to your team in another book or in your office.",
+      "alreadyOnTeam": "That email belongs to this book's team. Change it under Team first.",
+      "inviteError": "Couldn't send the invitation."
+    },
+    "shell": {
+      "business": "Your business",
+      "portal": "Portal"
+    },
+    "close": {
+      "title": "Month-end close",
+      "help": "Closing a period locks its transactions (no rule, edit or bank update changes them) and publishes its totals by category to the owner's portal. It can be closed once the book's settlement days have passed, and it can be reopened; the change is logged.",
+      "none": "This book has no transactions yet.",
+      "count_one": "1 transaction",
+      "count_other": "{{count}} transactions",
+      "pending_one": "1 Pending",
+      "pending_other": "{{count}} Pending",
+      "closedOn": "Closed {{date}} by {{who}}",
+      "current": "Current period",
+      "late_one": "1 transaction recorded after close",
+      "late_other": "{{count}} transactions recorded after close",
+      "close": "Close",
+      "closeAnyway": "Close anyway",
+      "confirmPending_one": "1 pending item will be shown to the owner as uncategorized.",
+      "confirmPending_other": "{{count}} pending items will be shown to the owner as uncategorized.",
+      "reopen": "Reopen",
+      "error": "Couldn't update the period. Please try again.",
+      "waiting": "Settlement days: can be closed on {{date}}"
+    },
+    "year": {
+      "pick": "Year",
+      "closedMonths_one": "1 closed month",
+      "closedMonths_other": "{{count}} closed months",
+      "cumulative": "Year to date: income, costs and expenses",
+      "soFar": "Year to date",
+      "whereOut": "Costs and expenses by category",
+      "whereOutSub": "Year to date, {{year}}",
+      "whereIn": "Income by category",
+      "whereInSub": "Year to date, {{year}}",
+      "txCount_one": "1 transaction",
+      "txCount_other": "{{count}} transactions",
+      "showTable": "View as a table",
+      "hideTable": "Hide the table",
+      "category": "Category"
+    }
   }
 }

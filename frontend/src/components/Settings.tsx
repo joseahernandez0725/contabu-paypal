@@ -10,6 +10,8 @@ import { SECTION_LABEL } from "../accounting";
 import { DEMO_MODE } from "../demo";
 import type { Company } from "../types";
 import { PageHeader, Stat } from "./PageKit";
+import OwnerAccessSection from "./owner/OwnerAccessSection";
+import MonthCloseSection from "./owner/MonthCloseSection";
 
 // Las secciones del plan, en el orden del P&L; NON_PL al final (lo que no entra al estado de resultados).
 const SECTIONS = ["REVENUE", "COGS", "OPERATING_EXPENSE", "OTHER_INCOME", "OTHER_EXPENSE", "NON_PL"];
@@ -36,7 +38,7 @@ export default function Settings({
   const [people, setPeople] = useState<number | null>(null);
   const [own, setOwn] = useState<number | null>(null);
   useEffect(() => {
-    if (isOwner) getMembers().then((m) => setPeople(m.length)).catch(() => setPeople(null));
+    if (isOwner) getMembers().then((m) => setPeople(m.filter((x) => x.role !== "CLIENT").length)).catch(() => setPeople(null));
     getChart().then((c) => setOwn(c.accounts.filter((a) => a.custom && !a.archived).length)).catch(() => setOwn(null));
   }, [isOwner, company?.tax_form]);
   const form = company?.tax_form ?? "schedule_c";
@@ -54,6 +56,12 @@ export default function Settings({
       {isOwner && company && (
         <BusinessProfile company={company} canDelete={canDelete} onSaved={onSaved} onDeleted={onDeleted} />
       )}
+
+      {/* El dueño del negocio (FASE 16): su acceso al portal, APARTE del equipo, y "Ver como el dueño". Arriba, no
+          al final: debajo del plan de cuentas nadie lo encontraba (Jose, 31-oct). */}
+      {company && <OwnerAccessSection canInvite={isOwner} />}
+      {/* Cierre de mes (FASE 16 Paso 2): cerrar congela el mes y sube su foto al portal del dueño. */}
+      {company && <MonthCloseSection canClose={canEdit} />}
 
       {canEdit && (
         <>
@@ -110,7 +118,8 @@ function TeamSection() {
       </div>
 
       <div className="space-y-1">
-        {(members ?? []).map((m) => (
+        {/* El dueño del negocio (CLIENT) no es del equipo: vive en su propia sección (FASE 16). */}
+        {(members ?? []).filter((m) => m.role !== "CLIENT").map((m) => (
           <div key={m.id ?? "owner"} className="flex items-center justify-between gap-2 py-1.5 text-sm">
             <span className="min-w-0 flex-1 truncate text-slate-700">
               {m.email ?? "—"}

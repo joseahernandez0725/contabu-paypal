@@ -1738,5 +1738,95 @@
       "t": "Lo que encontraron los agentes queda en la fila",
       "b": "El hallazgo, el veredicto, quién lo juzgó y la evidencia web de Tavily con su enlace. El trabajo de los agentes queda guardado en la fila: no se vuelve a pagar."
     }
+  },
+  "owner": {
+    "nav": {
+      "summary": "Resumen",
+      "accounts": "Cuentas",
+      "invoices": "Cobros"
+    },
+    "managedBy": "Contabilidad por {{name}}",
+    "yourBookkeeper": "tu bookkeeper",
+    "switchBook": "Cambiar de negocio",
+    "error": "No se pudo cargar el portal. Inténtalo de nuevo.",
+    "summary": {
+      "meta": "Solo periodos cerrados por tu bookkeeper",
+      "closedMonths_one": "mes cerrado",
+      "closedMonths_other": "meses cerrados",
+      "emptyTitle": "Todavía no hay periodos cerrados",
+      "emptyBody": "Cuando {{name}} cierre un mes, aquí verás sus ingresos, costos y gastos por categoría. El mes en curso se publica cuando se cierre.",
+      "in": "Ingresos",
+      "out": "Costos y gastos",
+      "total": "Total",
+      "nothing": "Sin transacciones en el periodo.",
+      "pending_one": "1 transacción pendiente de clasificar (depósitos {{in}}, pagos {{out}}). No se incluye en los totales.",
+      "pending_other": "{{count}} transacciones pendientes de clasificar (depósitos {{in}}, pagos {{out}}). No se incluyen en los totales.",
+      "excludes": "No incluye transferencias entre cuentas propias, aportes de capital ni retiros del dueño."
+    },
+    "accounts": {
+      "title": "Cuentas conectadas",
+      "body": "Aquí aparecerán tus cuentas bancarias y de PayPal, con la fecha de su última sincronización."
+    },
+    "invoices": {
+      "title": "Cobros",
+      "body": "Aquí podrás emitir facturas y cobrarlas con tarjeta o PayPal. Cada pago se registra automáticamente en tu contabilidad."
+    },
+    "preview": {
+      "title": "Vista previa:",
+      "body": "así ve el portal el dueño del negocio. Solo lectura.",
+      "exit": "Volver a la consola"
+    },
+    "access": {
+      "title": "Dueño del negocio",
+      "help": "El dueño tiene su propio portal: los totales de los periodos que cerraste, sus cuentas y sus cobros. No ve el estado de resultados (P&L), las transacciones ni tus reglas. La invitación todavía no envía correo: avísale directamente.",
+      "preview": "Ver como el dueño",
+      "none": "El dueño todavía no tiene acceso.",
+      "placeholder": "dueño@correo.com",
+      "invite": "Invitar",
+      "remove": "Quitar acceso",
+      "teamElsewhere": "Invitación creada. Este correo también pertenece a tu equipo en otro libro o en tu oficina.",
+      "alreadyOnTeam": "Ese correo pertenece al equipo de este libro. Modifícalo primero en Equipo.",
+      "inviteError": "No se pudo enviar la invitación."
+    },
+    "shell": {
+      "business": "Tu negocio",
+      "portal": "Portal"
+    },
+    "close": {
+      "title": "Cierre de mes",
+      "help": "Al cerrar un periodo, sus transacciones quedan bloqueadas (ninguna regla, edición ni actualización bancaria las modifica) y sus totales por categoría se publican en el portal del dueño. Se puede cerrar al terminar los días de espera del libro y se puede reabrir; el cambio queda registrado.",
+      "none": "Este libro todavía no tiene transacciones.",
+      "count_one": "1 transacción",
+      "count_other": "{{count}} transacciones",
+      "pending_one": "1 Pendiente",
+      "pending_other": "{{count}} Pendientes",
+      "closedOn": "Cerrado el {{date}} por {{who}}",
+      "current": "Periodo en curso",
+      "late_one": "1 transacción registrada después del cierre",
+      "late_other": "{{count}} transacciones registradas después del cierre",
+      "close": "Cerrar",
+      "closeAnyway": "Cerrar de todos modos",
+      "confirmPending_one": "1 pendiente se mostrará al dueño como sin clasificar.",
+      "confirmPending_other": "{{count}} pendientes se mostrarán al dueño como sin clasificar.",
+      "reopen": "Reabrir",
+      "error": "No se pudo actualizar el periodo. Inténtalo de nuevo.",
+      "waiting": "En días de espera: se podrá cerrar el {{date}}"
+    },
+    "year": {
+      "pick": "Año",
+      "closedMonths_one": "1 mes cerrado",
+      "closedMonths_other": "{{count}} meses cerrados",
+      "cumulative": "Acumulado del año: ingresos, costos y gastos",
+      "soFar": "Acumulado del año",
+      "whereOut": "Costos y gastos por categoría",
+      "whereOutSub": "Acumulado {{year}}",
+      "whereIn": "Ingresos por categoría",
+      "whereInSub": "Acumulado {{year}}",
+      "txCount_one": "1 transacción",
+      "txCount_other": "{{count}} transacciones",
+      "showTable": "Ver como tabla",
+      "hideTable": "Ocultar la tabla",
+      "category": "Categoría"
+    }
   }
 }

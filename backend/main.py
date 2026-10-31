@@ -37,6 +37,7 @@ from corrections import (VIA_FOLLOW_RULE, VIA_MANUAL, VIA_RULE_DELETED, VIA_RULE
 from db import get_session
 import demo  # FASE 13 — despliegue de demo (no hace nada si DEMO_MODE está apagado)
 import book_notes  # FASE 11 — las notas del libro (Auditoría / IA)
+import month_close  # FASE 16 — cerrar el mes: rutas + el guardián que congela un mes cerrado (registra el evento al importarse)
 from ingestion import ingest_csv, mask_account, parse_spreadsheet
 from models import (
     AccountType, CategoryRule, Company, CompanyCategory, CompanyMember, PnlReport, Role, RuleScope,
@@ -1069,14 +1070,18 @@ def _relabel(session: Session, company_id: int, user_id: Optional[int], old: str
         session.add(r)
     session.flush()
     changed = 0
-    for tx in session.exec(select(Transaction).where(Transaction.company_id == company_id)
-                           .where(Transaction.category == old)).all():
-        before = snapshot(tx)
-        tx.category = new
-        if tx.account_type == old_section:
-            tx.account_type = new_section
-        session.add(tx)
-        changed += record_change(session, tx, before, via=via, user_id=user_id) is not None
+    # FASE 16: renombrar SÍ llega a un mes cerrado (misma cuenta, otro nombre); moverla de sección no → 409.
+    # El flush va DENTRO del bloque: el guardián mira el permiso al escribir, no al asignar.
+    with month_close.allow_rename():
+        for tx in session.exec(select(Transaction).where(Transaction.company_id == company_id)
+                               .where(Transaction.category == old)).all():
+            before = snapshot(tx)
+            tx.category = new
+            if tx.account_type == old_section:
+                tx.account_type = new_section
+            session.add(tx)
+            changed += record_change(session, tx, before, via=via, user_id=user_id) is not None
+        session.flush()
     return changed
 
 
@@ -1476,7 +1481,8 @@ def update_rule(
         cond = CategoryRule(match_text=mt, category="-", scope=RuleScope.COMPANY,
                             valid_from=vf, valid_to=vt, amount_min=amin, amount_max=amax)
         released = [t for t in session.exec(select(Transaction).where(Transaction.company_id == company_id)
-                                            .where(Transaction.matched_rule_id == rule.id)).all()
+                                            .where(Transaction.matched_rule_id == rule.id)
+                                            .where(month_close.open_rows())).all()   # FASE 16: mes cerrado, no
                     if t.source != "manual"
                     and match_rule([cond], matchable_text(t.description, t.description_extra), t.date, t.amount) is None]
     else:
@@ -1548,7 +1554,8 @@ def _rule_rows(session: Session, company_id: int, rule_id: int) -> list[Transact
     """Las filas que DECIDE una regla (no lo escrito a mano: está desconectado de las reglas)."""
     return session.exec(select(Transaction).where(Transaction.company_id == company_id)
                         .where(Transaction.matched_rule_id == rule_id)
-                        .where(Transaction.source == "rule")).all()
+                        .where(Transaction.source == "rule")
+                        .where(month_close.open_rows())).all()   # FASE 16: los meses cerrados se quedan como están
 
 
 @app.get("/api/companies/{company_id}/rules/{rule_id}/delete-preview")
@@ -1604,8 +1611,8 @@ def delete_rule(
                 continue  # solo el cambio MÁS RECIENTE de cada transacción
             seen.add(ch.transaction_id)
             tx = session.get(Transaction, ch.transaction_id)
-            if tx is not None and tx.company_id == company_id and \
-                    undo_change(session, tx, ch, user_id=user.id):
+            if tx is not None and tx.company_id == company_id and not month_close.is_locked(session, tx) and \
+                    undo_change(session, tx, ch, user_id=user.id):   # FASE 16: un mes cerrado no se deshace
                 reverted += 1
         session.flush()
     # Lo que la regla todavía decide vuelve al motor, sin ella.
@@ -2876,3 +2883,17 @@ def transaction_rule_trace(company_id: int, transaction_id: int, user: User = De
     if tx is None:
         raise HTTPException(status_code=404, detail="transaction not found")
     return rule_trace(load_rules(session, company.id, ""), tx)
+
+
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# EL PORTAL DEL DUEÑO (FASE 16, área PayPal / portal del dueño · 31-oct-2026). Sus rutas viven en
+# `owner_portal.py` (un router propio, para no crecer este archivo que comparten todas las áreas).
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# ⚠️ Rutas PLANAS, no `include_router`: desde FastAPI 0.137 un router incluido queda como UNA entrada
+# perezosa en `app.routes`, sin `path`, y `check_permissions.py` (que recorre `app.routes`) no lo vería.
+import owner_portal  # noqa: E402
+
+for _r in [*owner_portal.router.routes, *month_close.router.routes]:
+    app.add_api_route(_r.path, _r.endpoint, methods=sorted(_r.methods), name=_r.name)
+# Un cambio a un movimiento de un mes CERRADO, venga de donde venga → 409 {"detail": "month_closed", "month"}.
+app.add_exception_handler(month_close.MonthClosedError, month_close.on_month_closed)

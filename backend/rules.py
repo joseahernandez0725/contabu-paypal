@@ -20,6 +20,7 @@ from typing import Optional
 from sqlmodel import Session, select
 
 from merchants import GAS_STATIONS, SUPERMARKETS
+import month_close  # FASE 16: los caminos en lote saltan los meses CERRADOS (`open_rows`)
 from corrections import VIA_RULE_APPLIED, VIA_RULE_PRECEDENCE, record_change, snapshot
 from models import AccountType, CategoryRule, RuleScope, Transaction
 
@@ -560,6 +561,7 @@ def reapply_rule_precedence(session: Session, company_id: int, *,
     txs = session.exec(
         select(Transaction).where(Transaction.company_id == company_id)
         .where(Transaction.source == "rule")
+        .where(month_close.open_rows())   # un mes cerrado no se re-decide (FASE 16)
     ).all()
     moved = 0
     for t in txs:
@@ -630,6 +632,7 @@ def apply_rule_to_transactions(
         session.flush()  # la regla recién creada necesita su id para la procedencia
     txs = session.exec(
         select(Transaction).where(Transaction.company_id == company_id)
+        .where(month_close.open_rows())   # un mes cerrado no se toca (FASE 16)
     ).all()
     # Qué regla GANA en cada fila: aplicar esta no debe pisar las filas que otra le gana (p. ej. la
     # ventana "STARBUCKS del 3 al 17-ago" al editar "STARBUCKS"). Antes se pisaban y luego

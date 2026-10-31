@@ -15,6 +15,7 @@ import Sidebar, { viewLabel, type View } from "./components/Sidebar";
 import { DEMO_MODE, ENTER_CODE_EVENT, openDemoGuide, setTouring, type DemoDoor } from "./demo";
 import { AccessCodeScreen, TourBanner, TourMissing } from "./components/DemoDoors";
 import DemoGuide from "./components/DemoGuide";
+import OwnerApp, { OWNER_PREVIEW_EVENT } from "./components/owner/OwnerApp";
 import { auth } from "./firebase";
 import { getCompanies, getCompany, setActiveCompany, createCompany, getAuditSummary, confirmCheckout, demoDoor } from "./api";
 import type { AuditBoard } from "./api";
@@ -60,6 +61,13 @@ function App() {
     if (window.innerWidth < 768) setMenuOpen(open);
     else setGuideSidebar(open);
   }, []);
+  // "Ver como el dueño" (FASE 16): la consola abre el portal del dueño en vista previa, sin cambiar permisos.
+  const [ownerPreview, setOwnerPreview] = useState(false);
+  useEffect(() => {
+    const open = () => setOwnerPreview(true);
+    window.addEventListener(OWNER_PREVIEW_EVENT, open);
+    return () => window.removeEventListener(OWNER_PREVIEW_EVENT, open);
+  }, []);
   useEffect(() => {
     const enterCode = () => setBrowsingTour(false);
     window.addEventListener(ENTER_CODE_EVENT, enterCode);
@@ -88,7 +96,8 @@ function App() {
     setActiveCompany(c.id);
     setCompany(c);
     setView("dashboard");
-    reloadReview();
+    setOwnerPreview(false);
+    if (c.role !== "CLIENT") reloadReview();
   };
 
   // Crea una empresa nueva bajo la cuenta → se vuelve activa (sin sector → onboarding).
@@ -125,7 +134,8 @@ function App() {
         // siempre es el primero de la lista nueva (Rivera HVAC), no el que quedó de antes.
         if (DEMO_MODE && cs[0]) setActiveCompany(cs[0].id);
         setDoor(demoDoor());
-        setCompanies(cs); setCompany(cs[0] ?? null); reloadReview();
+        setCompanies(cs); setCompany(cs[0] ?? null);
+        if (cs[0]?.role !== "CLIENT") reloadReview();   // el dueño no tiene contadores de Auditoría (FASE 16)
       })
       .catch(() => setAuthError(true));
   }, [fbUser, reloadReview, session]);
@@ -176,6 +186,15 @@ function App() {
   // (rol CLIENT) nunca aterriza eligiendo la industria de su negocio.
   if (company && !company.sector && company.role !== "CLIENT") {
     return <Onboarding company={company} onDone={onCompanyReady} />;
+  }
+
+  // EL PORTAL DEL DUEÑO (FASE 16): lo elige el rol del libro ABIERTO, no `firm == null` (un contador que además
+  // es cliente de otro libro también funciona). El bookkeeper lo ve en vista previa desde Ajustes.
+  if (company && (company.role === "CLIENT" || ownerPreview)) {
+    return (
+      <OwnerApp key={company.id} company={company} companies={companies} onSwitch={switchCompany}
+                onExitPreview={company.role === "CLIENT" ? undefined : () => setOwnerPreview(false)} />
+    );
   }
 
   // LA CÁSCARA (FASE 13): barra lateral + UN solo ancho para todas las páginas — el de Activity.

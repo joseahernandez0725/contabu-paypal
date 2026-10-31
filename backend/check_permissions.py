@@ -67,7 +67,7 @@ from sqlmodel import Session, delete, select  # noqa: E402
 import auth  # noqa: E402
 from db import engine  # noqa: E402
 from main import app  # noqa: E402
-from models import (CategorizationChange, CategoryRule, CellFormat, Company,  # noqa: E402
+from models import (AccountType, CategorizationChange, CategoryRule, CellFormat, Company,  # noqa: E402
                     CompanyCategory, CompanyMember,
                     Firm, FirmMember, FirmRole, LearnedMerchant, MonthlyInsight, PnlReport,
                     Role, SheetLabel, Transaction, TransactionLabel, User)
@@ -86,10 +86,15 @@ CLIENT_ALLOWED: set[tuple[str, str]] = {
     # Decisión de Jose (30-sep-2026): el dueño NO ve el libro en construcción — ni el P&L, ni el
     # pivote, ni los movimientos categorizados, ni los reportes. Todo eso cambia el año entero; lo
     # ve cuando el bookkeeper se lo ENVÍA (Solicitud). Lo que queda es lo que el dueño APORTA.
+    # 🔄 31-oct (Jose, FASE 16): el dueño tiene SU PORTAL (Resumen · Cuentas · Cobros) bajo /api/owner/.
+    # Sigue sin ver el P&L ni transacciones ni el criterio del bookkeeper: su Resumen son totales por
+    # categoría de los meses que el bookkeeper CERRÓ (un mes cerrado ya no cambia). Cada ruta /api/owner/
+    # entra aquí con su razón, y `check_owner_portal()` prueba que no alcanza otro libro.
     ("GET", "/api/me"),                                            # quién soy y cuál es mi libro
     ("GET", "/api/companies/{company_id}"),                        # nombre de mi negocio
     ("POST", "/api/companies/{company_id}/transactions/upload"),   # "subir un extracto"
     ("GET", "/api/hello"),                                         # público, sin identidad
+    ("GET", "/api/owner/companies/{company_id}"),                  # portada del portal: negocio, quién lo lleva, meses cerrados
 }
 
 # Rutas que NO se prueban porque no pertenecen al modelo de acceso por libro.
@@ -150,6 +155,8 @@ BODIES: dict[tuple[str, str], dict] = {
     ("POST", "/api/companies/{company_id}/agents/verify-merchant"): {"transaction_id": 999999},
     ("POST", "/api/companies/{company_id}/audit/findings/{finding_id}/resolve"): {"status": "ok"},
     ("POST", "/api/companies/{company_id}/agents/dismissals"): {"keyword": "PERMCHECK"},
+    # El dueño en la consola (FASE 16, 31-oct): invitarlo es del bookkeeper, nunca del propio cliente.
+    ("POST", "/api/companies/{company_id}/owner-access"): {"email": "permcheck-owner2@test.local"},
     # Las dos puertas del demo (Firm, 23-oct): fuera del demo, 404.
     ("POST", "/api/demo/access"): {"code": "permcheck-wrong"},
     # "__TX__" se reemplaza por el id de la transacción REAL de prueba: con una lista vacía el
@@ -657,7 +664,154 @@ def check_demo_doors(client: TestClient) -> list[str]:
     return fails
 
 
+OWNER_KEYS = {"company", "managed_by", "brand_color", "brand_logo_url", "preview", "closed_months", "years"}
+
+
+def check_owner_portal(client: TestClient) -> list[str]:
+    """FASE 16 (31-oct): el portal del dueño. Además del barrido de rutas (que ya prueba que el CLIENT no lee
+    transacciones, categorías, notas ni reportes), esto prueba lo que el barrido no ve:
+      1. que el dueño NO alcanza el portal de OTRO libro de la misma firma (403);
+      2. que la portada trae SOLO sus campos — si alguien le agrega transacciones o cifras, esto falla;
+      3. que el bookkeeper ve la MISMA portada en vista previa (`preview: true`) y el dueño no.
+    """
+    print("\n  --- el portal del dueño (FASE 16) ---")
+    fails: list[str] = []
+    def expect(label: str, ok: bool, got) -> None:
+        print(f"  {'✅' if ok else '❌'} {label} → {got}")
+        if not ok:
+            fails.append(f"portal del dueño: {label} → {got}")
+    with Session(engine) as s:
+        company_id, _ = build_fixtures(s)
+        firm_id = s.get(Company, company_id).firm_id
+        bk_id = s.exec(select(User.id).where(User.firebase_uid == BOOK_UID)).one()
+        other = Company(name="PERMCHECK OTHER BOOK", sector="construction", firm_id=firm_id, user_id=bk_id)
+        s.add(other)
+        # Un bookkeeper de la oficina (invitación pendiente): si lo invitan como dueño, se AVISA.
+        s.add(FirmMember(firm_id=firm_id, email="permcheck-mate@test.local", role=FirmRole.BOOKKEEPER))
+        s.commit(); s.refresh(other)
+        other_id = other.id
+    cl = {"X-Dev-Uid": CLIENT_UID, "X-Dev-Email": "permcheck-client@test.local"}
+    bk = {"X-Dev-Uid": BOOK_UID, "X-Dev-Email": "permcheck-bk@test.local"}
+    try:
+        r = client.get(f"/api/owner/companies/{other_id}", headers=cl)
+        expect("el dueño en el portal de OTRO libro de su firma", r.status_code == 403, r.status_code)
+        r = client.get(f"/api/owner/companies/{company_id}", headers=cl)
+        body = r.json() if r.status_code == 200 else {}
+        expect("el dueño en SU portal", r.status_code == 200 and body.get("preview") is False,
+               f"{r.status_code} · preview={body.get('preview')}")
+        expect("la portada trae solo sus campos", set(body) == OWNER_KEYS, sorted(set(body) ^ OWNER_KEYS) or "ok")
+        r = client.get(f"/api/owner/companies/{company_id}", headers=bk)
+        expect("el bookkeeper ve la portada en vista previa",
+               r.status_code == 200 and r.json().get("preview") is True, r.status_code)
+        r = client.post(f"/api/companies/{company_id}/owner-access", headers=bk,
+                        json={"email": "permcheck-bk@test.local"})
+        expect("invitar como dueño a quien creó el libro → 409", r.status_code == 409, r.status_code)
+        r = client.post(f"/api/companies/{company_id}/owner-access", headers=bk,
+                        json={"email": "permcheck-mate@test.local"})
+        expect("invitar como dueño a alguien del equipo de la oficina → aviso, no bloqueo",
+               r.status_code == 200 and r.json().get("warning") == "team_elsewhere",
+               f"{r.status_code} · {r.json().get('warning') if r.status_code == 200 else r.json()}")
+    finally:
+        with Session(engine) as s:
+            drop_fixtures(s)
+    return fails
+
+
+def check_month_close(client: TestClient) -> list[str]:
+    """FASE 16 Paso 2 (31-oct): cerrar el mes. Lo que el barrido no ve: que un mes cerrado de verdad NO cambia
+    (ni a mano, ni por una regla), que el dueño ve la FOTO (y nada al reabrir), y lo que llega tarde."""
+    print("\n  --- cerrar el mes (FASE 16) ---")
+    fails: list[str] = []
+    def expect(label: str, ok: bool, got) -> None:
+        print(f"  {'✅' if ok else '❌'} {label} → {got}")
+        if not ok:
+            fails.append(f"cerrar el mes: {label} → {got}")
+    with Session(engine) as s:
+        company_id, tx_id = build_fixtures(s)
+        tx = s.get(Transaction, tx_id)
+        tx.account_type = AccountType.COGS                      # HOME DEPOT 100 → Materials (COGS), junio
+        s.add(tx)
+        for desc, amt, inflow, at, cat in (("CLIENT PAYMENT", "1000.00", True, AccountType.REVENUE, "Gross receipts or sales"),
+                                           ("REFUND TO CLIENT", "200.00", False, AccountType.REVENUE, "Returns and allowances"),
+                                           ("MYSTERY DEPOSIT", "50.00", True, None, None)):
+            s.add(Transaction(company_id=company_id, date=date(2026, 6, 10), description=desc,
+                              amount=Decimal(amt), is_inflow=inflow, account_type=at, category=cat))
+        s.commit()
+    cl = {"X-Dev-Uid": CLIENT_UID, "X-Dev-Email": "permcheck-client@test.local"}
+    bk = {"X-Dev-Uid": BOOK_UID, "X-Dev-Email": "permcheck-bk@test.local"}
+    base = f"/api/companies/{company_id}/months"
+    try:
+        r = client.post(f"{base}/2026-06/close", headers=cl)
+        expect("el dueño NO puede cerrar un mes", r.status_code == 403, r.status_code)
+        r = client.post(f"{base}/{date.today():%Y-%m}/close", headers=bk)
+        expect("el mes en curso no se cierra", r.status_code == 422, r.status_code)
+        with Session(engine) as s:                          # días de espera enormes: junio todavía "espera"
+            co = s.get(Company, company_id); co.settlement_buffer_days = 9999; s.add(co); s.commit()
+        r = client.post(f"{base}/2026-06/close", headers=bk)
+        waiting = {x["month"]: x["status"] for x in client.get(base, headers=bk).json()}.get("2026-06")
+        expect("antes de los días de espera no se cierra (422 waiting_days · status waiting)",
+               r.status_code == 422 and (r.json().get("detail") or {}).get("code") == "waiting_days" and waiting == "waiting",
+               f"{r.status_code} · {waiting}")
+        with Session(engine) as s:
+            co = s.get(Company, company_id); co.settlement_buffer_days = None; s.add(co); s.commit()
+        r = client.post(f"{base}/2026-06/close", headers=bk)
+        expect("el bookkeeper cierra junio", r.status_code == 200, r.status_code)
+        r = client.post(f"{base}/2026-06/close", headers=bk)
+        expect("cerrarlo dos veces → 409", r.status_code == 409, r.status_code)
+
+        home = client.get(f"/api/owner/companies/{company_id}", headers=cl).json()
+        m = (home.get("closed_months") or [{}])[0]
+        expect("el dueño ve la foto de junio (entró 1000 − 200, salió 100, 1 Pendiente)",
+               (m.get("month"), m.get("total_in"), m.get("total_out"), (m.get("pending") or {}).get("count"))
+               == ("2026-06", "800.00", "100.00", 1),
+               (m.get("month"), m.get("total_in"), m.get("total_out"), (m.get("pending") or {}).get("count")))
+
+        y = (home.get("years") or [{}])[0]
+        expect("el año acumulado sale de las fotos (2026: entró 800, salió 100; Materials 100)",
+               (y.get("year"), y.get("total_in"), y.get("total_out"), (y.get("out_by_category") or [{}])[0].get("category"),
+                (y.get("months") or [{}])[-1].get("cum_out")) == (2026, "800.00", "100.00", "Materials", "100.00"),
+               (y.get("year"), y.get("total_in"), y.get("total_out")))
+
+        r = client.patch(f"/api/transactions/{tx_id}", headers=bk, json={"category": "Supplies"})
+        expect("editar a mano un movimiento de junio → 409 month_closed",
+               r.status_code == 409 and r.json().get("detail") == "month_closed", f"{r.status_code} {r.json()}")
+        r = client.post(f"/api/companies/{company_id}/rules", headers=bk,
+                        json={"match_text": "HOME DEPOT", "account_type": "OPERATING_EXPENSE", "category": "Supplies"})
+        with Session(engine) as s:
+            after = s.get(Transaction, tx_id)
+            cat = (after.account_type.value if after.account_type else None, after.category)
+        expect("una regla nueva SALTA el mes cerrado (la regla se crea, junio no cambia)",
+               r.status_code == 200 and cat == ("COGS", "Materials"), f"{r.status_code} · {cat}")
+
+        with Session(engine) as s:                          # el banco asienta tarde un movimiento de junio
+            s.add(Transaction(company_id=company_id, date=date(2026, 6, 28), description="LATE BANK ROW",
+                              amount=Decimal("30.00"), is_inflow=False))
+            s.commit()
+        months = {x["month"]: x for x in client.get(base, headers=bk).json()}
+        expect("lo que llega tarde entra y se avisa (late=1); la foto no cambia",
+               months.get("2026-06", {}).get("late") == 1 and
+               client.get(f"/api/owner/companies/{company_id}", headers=cl).json()["closed_months"][0]["total_out"] == "100.00",
+               months.get("2026-06"))
+
+        r = client.post(f"{base}/2026-06/reopen", headers=bk)
+        expect("reabrir junio", r.status_code == 200, r.status_code)
+        home = client.get(f"/api/owner/companies/{company_id}", headers=cl).json()
+        expect("reabierto: el dueño deja de verlo", home.get("closed_months") == [], home.get("closed_months"))
+        r = client.patch(f"/api/transactions/{tx_id}", headers=bk, json={"category": "Supplies"})
+        expect("reabierto: la edición a mano vuelve a pasar", r.status_code == 200, r.status_code)
+    finally:
+        with Session(engine) as s:
+            drop_fixtures(s)
+    return fails
+
+
 def main() -> int:
+    # Un router INCLUIDO (FastAPI ≥ 0.137) queda en `app.routes` como una sola entrada sin `path`, y todos los
+    # barridos de abajo lo saltarían en silencio. Se exige registrar las rutas planas (ver el final de main.py).
+    hidden = [type(r).__name__ for r in app.routes if not getattr(r, "path", None)]
+    if hidden:
+        print(f"  🔴 Rutas que este barrido NO ve (¿un `include_router`?): {hidden}")
+        return 1
     with Session(engine) as s:
         drop_fixtures(s)              # por si una corrida anterior murió a medias
         company_id, tx_id = build_fixtures(s)
@@ -775,6 +929,8 @@ def main() -> int:
     leaks.extend(check_anonymous_tokens(client))
     leaks.extend(check_demo_cleanup_firebase())
     leaks.extend(check_demo_doors(client))
+    leaks.extend(check_owner_portal(client))
+    leaks.extend(check_month_close(client))
 
     print(f"\n  Rutas comprobadas: {checked}  ·  permitidas al cliente: {len(CLIENT_ALLOWED)}")
     if BLOCKED:
