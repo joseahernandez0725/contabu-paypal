@@ -7,14 +7,14 @@ import {
   decideBankRemoved, getBankConnections, syncBankConnection, BankApiError, getTransactionFlags, getMyRole,
   type FlagLevel,
   type BankConnection, type BankSync,
-  setTransactionLabels, applyCellFormat, type ChartOfAccounts, previewRule, currentCompanyId,
+  setTransactionLabels, applyCellFormat, type ChartOfAccounts, previewRule, currentCompanyId, getMonths,
 } from "../api";
 import type { CellFormat, Company, SheetLabel, SheetRow } from "../types";
 import { CATEGORY_EDITOR, categoryEditors, setEditorChart } from "./CategoryEditor";
 import RuleDialog from "./RuleDialog";
 import {
   TEXT_EDITOR, textEditors, useUndo, useUndoShortcut, useExternalClipboardGuard, useReadOnlyNotice,
-  ReadOnlyNotice, useCaseStyle, applyCase,
+  ReadOnlyNotice, useCaseStyle, applyCase, monthLabel, monthClosedText,
   CellMenu, CellViewer, cellFromEvent, FormulaBar, MenuBar, type Menu, type MenuItem, type CaseStyle,
 } from "./gridKit";
 import type { View } from "./Sidebar";
@@ -153,6 +153,11 @@ const matchesSearch = (r: SheetRow, q: string) =>
  *  abre con el filtro "Pendientes" y en la primera fila Pendiente. */
 export type SheetFocus = { id: number | null; onlyPending?: boolean; n: number };
 
+/** `readonly` POR FILA de RevoGrid (FASE 16 → Movimientos, 31-oct): la celda de una fila de un mes cerrado no
+ *  abre el editor, y pegar, borrar o arrastrar sobre un rango la saltan (RevoGrid mira `isReadOnly` celda por
+ *  celda). Pinta su gris (`.rgCell.disabled`): con el 🔒 de la fecha, es lo que dice "este mes está cerrado". */
+const closedRow = (p: any) => !!p?.model?._closed;
+
 export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
   onNavigate?: (v: View) => void;
   focusTx?: SheetFocus | null;   // la fila a la que hay que llevar al bookkeeper al abrir
@@ -168,7 +173,24 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
   // `hostRef` nace acá (temprano: `saveCell`, más abajo, ya necesita `roNotify`) — los otros hooks
   // que lo usan (deshacer, el candado del portapapeles) se enganchan donde ya vivían, mismo ref.
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const { show: roShow, notify: roNotify } = useReadOnlyNotice(hostRef, canEdit);
+  // MES CERRADO (FASE 16 → Movimientos, 31-oct): las filas de un mes cerrado son de SOLO LECTURA, por FILA
+  // (el VIEWER, arriba, es el libro entero). Mismo candado: `readonly` (aquí por columna y por fila, ver
+  // `closedRow`) + `saveCell`/`backToRule` + el aviso al intentarlo. Los meses ("2026-09") se releen en cada `load`.
+  const [closedMonths, setClosedMonths] = useState<Set<string>>(() => new Set());
+  const closedMonthsRef = useRef(closedMonths);
+  closedMonthsRef.current = closedMonths;
+  /** "2026-09" si la fecha cae en un mes cerrado; null si no. */
+  const closedMonthOf = (date?: string | null) => {
+    const m = (date ?? "").slice(0, 7);
+    return m && closedMonthsRef.current.has(m) ? m : null;
+  };
+  const closedText = (month: string) => t("sheet.monthClosed", { month: monthLabel(month, i18n.language) });
+  const focusRef = useRef<{ id: number } | null>(null);
+  const { show: roShow, text: roText, notify: roNotify } = useReadOnlyNotice(hostRef, canEdit, () => {
+    const id = focusRef.current?.id;
+    const m = closedMonthOf(rowsRef.current?.find((r) => r.id === id)?.date);
+    return m ? closedText(m) : null;
+  });
   const [rows, setRows] = useState<SheetRow[] | null>(null);
   const [chart, setChart] = useState<ChartOfAccounts>({});
   // Ventana "Crear regla" (4-oct): `seed` = la fila de la que parte, o null para una regla en blanco.
@@ -220,6 +242,7 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
   // BARRA DE FÓRMULAS (2-oct, pedido de Jose): la celda enfocada — id de la fila, columna y número
   // de fila visible — para mostrar su contenido COMPLETO arriba de la hoja, como en Excel.
   const [focus, setFocus] = useState<{ id: number; prop: string; row: number } | null>(null);
+  focusRef.current = focus;
   // EL PANEL LATERAL (13-oct, Firm; 21-oct: se RECOGE en vez de desaparecer). Sigue a la fila
   // enfocada. × o Esc lo recogen (una franja angosta a la derecha, con un botón para volver a
   // abrirlo); Ctrl+\ alterna. "contabu.detailsPanel" es el mismo pref que el menú Ver — true =
@@ -248,6 +271,9 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
 
   const load = useCallback(() => {
     getSheetRows().then(setRows).catch((e) => setError(String(e?.message ?? e)));
+    // Se relee con las filas: un mes se pudo cerrar o reabrir en Ajustes (u otra pestaña) mientras tanto.
+    getMonths().then((ms) => setClosedMonths(new Set(ms.filter((m) => m.status === "closed").map((m) => m.month))))
+      .catch(() => {});
   }, []);
   // Los puntitos se recalculan con cada recarga de la hoja (una edición puede resolver un hallazgo).
   const loadFlags = useCallback(() => {
@@ -384,8 +410,9 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
       ...r,
       _flag: flags[r.id] ?? "",
       _rowClass: rowClassOf(r),
+      _closed: closedMonths.has((r.date ?? "").slice(0, 7)),   // mes cerrado: la fila es de solo lectura
     }));
-  }, [scoped, onlyFlagged, onlyPending, search, lang, flags]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [scoped, onlyFlagged, onlyPending, search, lang, flags, closedMonths]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Las CELDAS que coinciden, en orden de lectura (fila por fila, de izquierda a derecha): son las que
   // se resaltan y por las que se navega con Enter / Shift+Enter ("N de M").
@@ -411,10 +438,12 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
   const pending = scoped.filter((r) => !r.category).length;
 
   /** Una edición: se manda a la base y se recarga. Si falla, se revierte recargando. */
-  const { push: pushUndo, undo, canUndo, last: lastUndo } = useUndo((m) => setError(
-    m === "changed_since"
+  const { push: pushUndo, undo, canUndo, last: lastUndo } = useUndo((m) => {
+    setError(m === "changed_since"
       ? t("sheet.undoChanged", { defaultValue: "That row changed after this edit, so it wasn't undone." })
-      : m));
+      : monthClosedText(t, i18n.language, m) ?? m);
+    if (m.startsWith("month_closed:")) load();   // pinta el candado que faltaba (se cerró en otra pestaña)
+  });
   const [caseStyle, setCaseStyle] = useCaseStyle();
   // Para el Ctrl+C de la grilla (un listener que se pone una vez): el texto con el estilo y el idioma de AHORA.
   const cellCopyText = (r: SheetRow, prop: string) =>
@@ -433,6 +462,9 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
     // llama aquí directo sin pasar por RevoGrid.
     if (!canEdit) { roNotify(); return false; }
     if (!model?.id || !["category", "subcategory", "description_extra"].includes(prop)) return false;
+    // MES CERRADO (31-oct): el `readonly` por fila ya frena la grilla; esto cubre "Pegar" del menú.
+    const shut = closedMonthOf(rowsRef.current?.find((r) => r.id === model.id)?.date ?? model.date);
+    if (shut) { roNotify(closedText(shut)); if (reload) load(); return false; }
     const value = String(raw ?? "").trim();
     // OJO: RevoGrid ya aplicó el valor nuevo a `model` ANTES de disparar `afteredit`, así que
     // comparar contra `model[prop]` siempre da igual y descartaría toda edición (bug 27-sep).
@@ -479,9 +511,10 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
       setSaving(null);
       return true;
     } catch (err) {
-      setError(String((err as Error)?.message ?? err));
+      // Un 409 `month_closed` (se cerró en otra pestaña, una carrera): el mes con su nombre, no un error genérico.
+      setError(monthClosedText(t, i18n.language, err) ?? String((err as Error)?.message ?? err));
       setSaving(null);
-      load(); // revierte: la base manda
+      load(); // revierte: la base manda (y relee los meses cerrados: aparece el candado)
       return false;
     }
   }, [load, t, pushUndo, undoCategorization, canEdit, roNotify]);
@@ -693,6 +726,8 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
    *  Si ninguna regla la cubre, se dice claro — no se inventa nada. */
   const backToRule = useCallback(async (id: number) => {
     if (!canEdit) { roNotify(); return; }
+    const shut = closedMonthOf(rowsRef.current?.find((r) => r.id === id)?.date);
+    if (shut) { roNotify(closedText(shut)); return; }
     setSaving(t("sheet.following", { defaultValue: "Looking up the rule…" }));
     try {
       await followRule(id);
@@ -701,7 +736,8 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
     } catch (err) {
       setError((err as Error).message === "no-rule"
         ? t("sheet.noRule", { defaultValue: "No rule covers this transaction. Create one in the Rules tab." })
-        : String((err as Error).message));
+        : monthClosedText(t, i18n.language, err) ?? String((err as Error).message));
+      load();
     } finally { setSaving(null); }
   }, [load, t, undoCategorization, canEdit, roNotify]);
   const backToRuleRef = useRef(backToRule);
@@ -768,6 +804,8 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
       // cualquier celda readonly (su propio CSS, `.rgCell.disabled`) y la fila debe verse EXACTAMENTE
       // igual que antes, solo con el 🔒. El candado real vive en `saveCell` (bloquea guardar, pegar y
       // Supr sobre esa celda); aquí el editor sí abre, pero escribir no se guarda.
+      // 🔄 31-oct: SÍ por FILA en un mes cerrado (`closedRow`): ahí el gris es justo la señal buscada.
+      readonly: closedRow,
       cellTemplate: (h: any, p: any) => {
         // El texto se corta con "…" y lo que va detrás (etiquetas, 📝) queda siempre a la vista.
         const text: any[] = [
@@ -781,11 +819,11 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
             title: t("sheet.yourText", { defaultValue: "Text you added — rules match on it too" }),
             style: { ...styleOf(p.model, "description"), opacity: 0.55, whiteSpace: "pre" },
           }, ` - ${p.model.description_extra}`));
-        } else if (canEditExtra(p.model.description)) {
+        } else if (canEditExtra(p.model.description) && !p.model._closed) {
           text.push(h("span", {
             style: { marginInlineStart: "6px", color: "#c9c2b2", fontStyle: "italic", fontSize: "12px" },
           }, t("sheet.addText", { defaultValue: "+ add" })));
-        } else {
+        } else if (!p.model._closed) {
           // Candado (20-oct, Jose: la fila se ve EXACTAMENTE igual que antes, solo con el 🔒 — sin
           // atenuarlo más que el resto de la fila).
           text.push(h("span", {
@@ -827,6 +865,7 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
       } },
     { prop: "category", name: t("sheet.category", { defaultValue: "Category" }), size: 190, sortable: true,
       editor: CATEGORY_EDITOR,  // plan de cuentas cerrado: se elige, no se inventa
+      readonly: closedRow,      // mes cerrado (31-oct)
       cellProperties: manualCell,
       // PROCEDENCIA (modelo de hoja de cálculo, idea de Jose): `ƒ` = la decidió una regla —la celda
       // es una "fórmula"—; sin marca = escrita a mano. Igual que en Excel, un valor a mano anula la
@@ -835,6 +874,12 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
         const fromRule = p.model.matched_rule_id != null;
         const manual = p.model.source === "manual";
         const kids: any[] = [];
+        // MES CERRADO (31-oct): el 🔒 dice por qué la celda no se deja editar (el gris lo pone `closedRow`).
+        // Va aquí y no en la Fecha: en sus 116 px fijos no cabía.
+        if (p.model._closed) kids.push(h("span", {
+          title: closedText(String(p.model.date).slice(0, 7)),
+          style: { marginInlineEnd: "5px", fontSize: "11px", flex: "none" },
+        }, "🔒"));
         if (fromRule) kids.push(h("span", {
           title: t("sheet.fromRule", { defaultValue: "Comes from a rule — click to see which" }),
           style: { color: "#1A8754", fontWeight: 700, fontStyle: "italic",
@@ -850,7 +895,8 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
         // Es la base visual de "toda la categorización sale de las reglas": lo que ninguna regla
         // cubrió no se rellena con una adivinanza — se queda visiblemente sin terminar.
         if (!p.model.category) {
-          return h("span", {
+          // (Pendiente lleva solo el 🔒, si toca: ni ƒ ni ✎, como antes.)
+          return h("span", { style: { display: "flex", alignItems: "center" } }, ...kids.slice(0, p.model._closed ? 1 : 0), h("span", {
             title: t("sheet.pendingHint", {
               defaultValue: "No rule covers this yet — pick a category or create a rule" }),
             style: {
@@ -858,13 +904,13 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
               padding: "1px 8px", borderRadius: "5px", fontSize: "12.5px",
               border: "1px dashed rgba(220,38,38,.45)",
             },
-          }, t("sheet.pending", { defaultValue: "Pending" }));
+          }, t("sheet.pending", { defaultValue: "Pending" })));
         }
         kids.push(h("span", { style: styleOf(p.model, "category") }, applyCase(p.model.category, caseStyle)));
         return h("span", { style: { display: "flex", alignItems: "center" } }, ...kids);
       } },
     { prop: "subcategory", name: t("sheet.subcategory", { defaultValue: "Subcategory" }), size: 165,
-      cellProperties: manualCell, editor: TEXT_EDITOR,
+      cellProperties: manualCell, editor: TEXT_EDITOR, readonly: closedRow,
       cellTemplate: (h: any, p: any) => h("span", { style: styleOf(p.model, "subcategory") }, applyCase(p.model.subcategory, caseStyle)) },
     // La NOTA de la fila ya no es columna (19-oct): se escribe en el panel lateral y aquí queda el 📝.
   ]), [t, caseStyle, descSize]);
@@ -986,8 +1032,11 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
     : String(m[prop] ?? "");
   const menuItems = (m: any, prop: string, row: number): MenuItem[] => {
     const colName = (columns as any[]).find((c) => c.prop === prop)?.name ?? prop;
-    const can = EDITABLE.includes(prop) && canEdit;
+    const shut = m._closed ? String(m.date).slice(0, 7) : null;   // mes cerrado (31-oct)
+    const can = EDITABLE.includes(prop) && canEdit && !shut;
     const items: MenuItem[] = [
+      ...(shut ? [{ label: "🔒 " + t("sheet.monthClosedShort", { month: monthLabel(shut, i18n.language) }),
+                    disabled: true, onClick: () => {} }, "sep" as const] : []),
       { label: t("sheet.menu.view", { defaultValue: "View full content" }),
         onClick: () => setViewer({ title: `${colName} · ${row + 1}`, text: sheetCellText(m, prop) }) },
       { label: t("sheet.menu.edit", { defaultValue: "Edit" }), hint: "Enter", disabled: !can,
@@ -1002,7 +1051,7 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
       "sep",
     ];
     if (m.source === "manual") items.push({ label: t("sheet.menu.followRule", { defaultValue: "Follow the rule again" }),
-      disabled: !canEdit, onClick: () => void backToRule(m.id) });
+      disabled: !canEdit || !!shut, onClick: () => void backToRule(m.id) });
     // IR A LA REGLA (Jose, 4-oct): la fórmula de esta celda, en la hoja de Reglas.
     if (m.source === "rule" && m.matched_rule_id != null) items.push({
       label: t("sheet.menu.goToRule", { defaultValue: "Go to the rule" }),
@@ -1011,10 +1060,11 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
     if (m.bank_removed_at) items.push(
       { label: t("sheet.menu.bankKeep", { defaultValue: "Keep it (clear the bank's mark)" }), disabled: !canEdit,
         onClick: async () => { try { await decideBankRemoved(m.id, "keep"); } catch (e) { setError(String((e as Error).message)); } load(); } },
-      { label: t("sheet.menu.bankDelete", { defaultValue: "Delete it from the book" }), disabled: !canEdit,
+      { label: t("sheet.menu.bankDelete", { defaultValue: "Delete it from the book" }), disabled: !canEdit || !!shut,
         onClick: async () => {
           if (!window.confirm(t("sheet.menu.bankDeleteConfirm", { defaultValue: "Delete this transaction? The bank withdrew it. This can't be undone." }))) return;
-          try { await decideBankRemoved(m.id, "delete"); } catch (e) { setError(String((e as Error).message)); }
+          try { await decideBankRemoved(m.id, "delete"); }
+          catch (e) { setError(monthClosedText(t, i18n.language, e) ?? String((e as Error).message)); }
           load();
         } },
     );
@@ -1222,7 +1272,8 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
             disabled: !canEdit,
             onClick: () => { if (tab !== "sheet") setTab("sheet"); setRuleDialog({ seed: selRow }); } },
       { label: t("sheet.menu.followRule", { defaultValue: "Follow the rule again" }),
-        disabled: !canEdit || tab !== "sheet" || selRow?.source !== "manual", onClick: () => selRow && void backToRule(selRow.id) },
+        disabled: !canEdit || tab !== "sheet" || selRow?.source !== "manual" || !!closedMonthOf(selRow?.date),
+        onClick: () => selRow && void backToRule(selRow.id) },
       onRules
         ? { label: t("rules.deleteRule", { defaultValue: "Delete rule…" }), disabled: !canEdit || !rc?.canDelete, onClick: () => rc?.deleteRule() }
         : { label: t("sheet.menu.goToRule", { defaultValue: "Go to the rule" }),
@@ -1707,7 +1758,7 @@ export default function Sheet({ onNavigate, focusTx, onFocusTxDone }: {
       )}
       {viewer && <CellViewer title={viewer.title} text={viewer.text} onClose={() => setViewer(null)}
                     closeLabel={t("sheet.menu.close", { defaultValue: "Close" })} />}
-      <ReadOnlyNotice show={roShow} text={t("sheet.readOnly", { defaultValue: "This book is read-only" })} />
+      <ReadOnlyNotice show={roShow} text={roText ?? t("sheet.readOnly", { defaultValue: "This book is read-only" })} />
 
       <p style={{ fontSize: 12, color: "#5b6b62", marginTop: 8 }}>
         {t("sheet.hint", {

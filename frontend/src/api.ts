@@ -159,6 +159,21 @@ export async function deleteCompany(id: number): Promise<void> {
   }
 }
 
+// ── MES CERRADO (FASE 16 → Movimientos, 31-oct) ─────────────────────────────────────────────────
+// Un cambio a un movimiento de un mes cerrado vuelve 409 `{"detail": "month_closed", "month": "2026-09"}`.
+// Va ANTES de mirar otros 409 (`changed_since`, `dup`): son errores distintos. `message` = "month_closed:2026-09",
+// así también lo reconoce quien solo guarda el texto del error (la pila de deshacer). Lo traduce
+// `monthClosedText()` (gridKit.tsx).
+export class MonthClosedError extends Error {
+  month: string;
+  constructor(month: string) { super(`month_closed:${month}`); this.month = month; }
+}
+async function throwIfMonthClosed(res: Response): Promise<void> {
+  if (res.status !== 409) return;
+  const body = await res.clone().json().catch(() => null);
+  if (body?.detail === "month_closed") throw new MonthClosedError(String(body.month ?? ""));
+}
+
 export async function getTransactions(): Promise<Transaction[]> {
   const res = await fetch(`${API}/api/companies/${cid()}/transactions`, { headers: await authHeaders() });
   if (!res.ok) throw new Error("No se pudieron cargar las transacciones");
@@ -185,6 +200,7 @@ export async function followRule(txId: number): Promise<{
     headers: { ...(await authHeaders()), "Content-Type": "application/json" },
     body: JSON.stringify({ rule_action: "follow_rule" }),
   });
+  await throwIfMonthClosed(res);
   if (res.status === 404) throw new Error("no-rule");
   if (!res.ok) throw new Error("No se pudo volver a seguir la regla");
   return res.json();
@@ -416,6 +432,7 @@ export interface RulePreview {
               category: string | null; source: string | null }[];
   duplicate: { id: number; match_text: string; category: string } | null;
   seed_matched: boolean | null;
+  closed: number;   // cazaría también estas, pero son de un mes CERRADO: no se tocan (fuera de `matches`)
 }
 export async function previewRule(payload: { keyword?: string; transaction_id?: number }): Promise<RulePreview> {
   const res = await fetch(`${API}/api/companies/${cid()}/rules/preview`, {
@@ -444,6 +461,7 @@ export async function createRule(payload: {
     headers: { ...(await authHeaders()), "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  await throwIfMonthClosed(res);
   if (res.status === 409) throw new Error("dup");
   if (!res.ok) throw new Error("No se pudo crear la regla");
   return res.json();
@@ -460,6 +478,7 @@ export async function updateRule(
     headers: { ...(await authHeaders()), "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  await throwIfMonthClosed(res);
   if (res.status === 409) throw new Error("dup");
   if (!res.ok) throw new Error("No se pudo actualizar la regla");
   return res.json();
@@ -474,6 +493,7 @@ export async function deleteRule(id: number, revert = false): Promise<RuleDelete
     method: "DELETE",
     headers: await authHeaders(),
   });
+  await throwIfMonthClosed(res);
   if (!res.ok) throw new Error("No se pudo eliminar la regla");
   return res.json();
 }
@@ -488,6 +508,7 @@ export interface RuleEditPreview {
   from_rules: { id: number; match_text: string; category: string; rows: number }[];
   manual: number; release_examples: string[]; take_examples: string[];
   duplicate: { id: number; match_text: string; category: string } | null;
+  closed: number;   // filas de un mes CERRADO que cambiarían, pero se quedan como están
 }
 export async function previewRuleEdit(id: number, match_text: string): Promise<RuleEditPreview> {
   const res = await fetch(`${API}/api/companies/${cid()}/rules/${id}/edit-preview`, {
@@ -504,6 +525,7 @@ export interface RuleDeletePreview {
   id: number; match_text: string; rows: number;
   to_rules: { id: number; match_text: string; category: string; rows: number }[];
   to_transfer: number; to_pending: number;
+  closed: number;   // las suyas en un mes CERRADO: se quedan como están (fuera de `rows`)
 }
 export async function previewRuleDelete(id: number): Promise<RuleDeletePreview> {
   const res = await fetch(`${API}/api/companies/${cid()}/rules/${id}/delete-preview`, { headers: await authHeaders() });
@@ -707,6 +729,7 @@ export async function updateTransaction(
     headers: { ...(await authHeaders()), "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  await throwIfMonthClosed(res);
   if (!res.ok) throw new Error("No se pudo actualizar la transacción");
   return res.json(); // { id, applied, rule_updated } — applied = otras tx que alineó la regla
 }
@@ -715,6 +738,7 @@ export async function updateTransaction(
 // categoría, con su procedencia exacta. 409 = alguien la cambió después (no se pisa).
 export async function undoTransactionChange(id: number): Promise<void> {
   const res = await fetch(`${API}/api/transactions/${id}/undo`, { method: "POST", headers: await authHeaders() });
+  await throwIfMonthClosed(res);
   if (res.status === 409) throw new Error("changed_since");
   if (!res.ok) throw new Error("undo_failed");
 }
@@ -725,6 +749,7 @@ export async function decideBankRemoved(id: number, action: "keep" | "delete"): 
     method: "POST", headers: { ...(await authHeaders()), "Content-Type": "application/json" },
     body: JSON.stringify({ action }),
   });
+  await throwIfMonthClosed(res);
   if (!res.ok) throw new Error("bank_removed_failed");
 }
 

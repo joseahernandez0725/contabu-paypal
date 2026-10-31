@@ -342,7 +342,9 @@
       "created_one": "Regla {{k}} creada · {{count}} movimiento categorizado",
       "created_other": "Regla {{k}} creada · {{count}} movimientos categorizados",
       "subcategoryTab": "Pulsa Tab para usar la sugerencia en gris.",
-      "needSub": "Escribe la subcategoría"
+      "needSub": "Escribe la subcategoría",
+      "closedKept_one": "{{count}} más coincide, pero es de un mes cerrado: no cambia.",
+      "closedKept_other": "{{count}} más coinciden, pero son de meses cerrados: no cambian."
     },
     "undoStyle_one": "resaltar {{count}} regla",
     "undoStyle_other": "resaltar {{count}} reglas",
@@ -469,7 +471,9 @@
       "seamlessAbove": "“{{label}}” ({{cat}}) sigue justo después de esta: sin huecos ni cruces.",
       "gapBelow": "Deja un hueco de {{gap}} después de “{{label}}” ({{cat}}): esos movimientos quedarían Pendientes.",
       "gapAbove": "Deja un hueco de {{gap}} antes de “{{label}}” ({{cat}}): esos movimientos quedarían Pendientes."
-    }
+    },
+    "closedKept_one": "{{count}} de un mes cerrado también cambiaría; se queda como está.",
+    "closedKept_other": "{{count}} de meses cerrados también cambiarían; se quedan como están."
   },
   "cat": {
     "Small Tools & Equipment": "Herramientas y equipo menor",
@@ -1355,7 +1359,9 @@
       "since": "Desde el {{d}}",
       "until": "Hasta el {{d}}"
     },
-    "bookNote": "Nota del libro"
+    "bookNote": "Nota del libro",
+    "monthClosed": "{{month}} está cerrado: reábrelo en Ajustes para cambiarlo.",
+    "monthClosedShort": "{{month}}: mes cerrado"
   },
   "shell": {
     "book": "Este libro",

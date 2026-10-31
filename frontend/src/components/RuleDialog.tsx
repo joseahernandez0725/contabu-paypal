@@ -180,6 +180,9 @@ export default function RuleDialog({ seed, chart, onClose, onCreated, onChartCha
               {preview.manual > 0 && (
                 <div style={{ color: "#7a5b00", marginTop: 4 }}>{t("rules.dialog.manualKept", { count: preview.manual })}</div>
               )}
+              {preview.closed > 0 && (
+                <div style={{ color: "#7a5b00", marginTop: 4 }}>{t("rules.dialog.closedKept", { count: preview.closed })}</div>
+              )}
               {preview.examples.length > 0 && (
                 <ul style={{ margin: "6px 0 0", padding: 0, listStyle: "none", maxHeight: 132, overflowY: "auto" }}>
                   {preview.examples.map((e) => (

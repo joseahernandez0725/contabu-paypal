@@ -330,6 +330,7 @@ export default function RulesSheet({ seedKeyword, onSeedUsed, toolbar = true, fo
       }
       if (!p.keep && !p.release && !p.take) lines.push("• " + t("rules.kwNone"));
       if (p.manual) lines.push(t("rules.kwManual", { count: p.manual }));
+      if (p.closed) lines.push(t("rules.closedKept", { count: p.closed }));   // mes cerrado (FASE 16): no cambian
       if (!window.confirm(lines.join("\n"))) { load(); return false; }
       setSaving(t("rules.saving", { defaultValue: "Saving…" }));
       try {
@@ -959,6 +960,7 @@ export default function RulesSheet({ seedKeyword, onSeedUsed, toolbar = true, fo
     if (p.to_transfer) lines.push("• " + t("rules.deleteToTransfer", { defaultValue: "{{count}} become transfers", count: p.to_transfer }));
     if (p.to_pending) lines.push("• " + t("rules.deleteToPending", { defaultValue: "{{count}} stay Pending", count: p.to_pending }));
     if (p.rows) lines.push(t("rules.deleteManual", { defaultValue: "What you wrote by hand doesn't change. You can undo it." }));
+    if (p.closed) lines.push(t("rules.closedKept", { count: p.closed }));   // mes cerrado (FASE 16): se quedan
     if (!window.confirm(lines.join("\n"))) return;
     setSaving(t("rules.saving", { defaultValue: "Saving…" }));
     try {

@@ -1333,7 +1333,7 @@ def preview_rule(
         if not keyword:
             keyword = suggest_keyword(seed.description, seed.description_extra)
     out = {"keyword": keyword, "matches": 0, "pending": 0, "manual": 0, "inflow": 0, "outflow": 0,
-           "examples": [], "duplicate": None, "seed_matched": None}
+           "examples": [], "duplicate": None, "seed_matched": None, "closed": 0}
     if len(normalize(keyword)) < 2:
         return out
     _valid_window(payload.valid_from, payload.valid_to)
@@ -1342,8 +1342,14 @@ def preview_rule(
                          account_type=AccountType.OPERATING_EXPENSE, category="-",
                          valid_from=payload.valid_from, valid_to=payload.valid_to,
                          amount_min=payload.amount_min, amount_max=payload.amount_max)
+    # Un mes CERRADO (FASE 16) no lo toca la regla al crearse (`apply_rule_to_transactions` lo salta): no se
+    # cuenta entre lo que caza, se dice aparte ("N están en meses cerrados").
+    locked = month_close.locked_months(session, company_id)
     for t in txs:
         if match_rule([probe], matchable_text(t.description, t.description_extra), t.date, t.amount) is None:
+            continue
+        if month_close.first_of_month(t.date) in locked:
+            out["closed"] += 1
             continue
         out["matches"] += 1
         out["pending"] += t.category is None
@@ -1538,7 +1544,13 @@ def preview_edit_rule(
                            priority=rule.priority, valid_from=rule.valid_from, valid_to=rule.valid_to,
                            amount_min=rule.amount_min, amount_max=rule.amount_max)
     txs = session.exec(select(Transaction).where(Transaction.company_id == company_id)).all()
-    sim = simulate_rule_change(load_rules(session, company_id, ""), rule.id, changed, txs)
+    # Lo de un mes CERRADO (FASE 16) no se mueve al guardar (el PATCH lo salta): se simula aparte y solo se
+    # cuenta, para decir "N están en meses cerrados y no cambian".
+    locked = month_close.locked_months(session, company_id)
+    shut = [t for t in txs if month_close.first_of_month(t.date) in locked]
+    ranked = load_rules(session, company_id, "")
+    sim = simulate_rule_change(ranked, rule.id, changed, [t for t in txs if month_close.first_of_month(t.date) not in locked])
+    sim_shut = simulate_rule_change(ranked, rule.id, changed, shut) if shut else {"release": 0, "take": 0}
     names = {r.id: r for r in session.exec(select(CategoryRule).where(CategoryRule.company_id == company_id)).all()}
     named = lambda c: [{"id": k, "match_text": names[k].match_text, "category": names[k].category, "rows": n}
                        for k, n in c.most_common() if k in names]
@@ -1546,6 +1558,7 @@ def preview_edit_rule(
                 and _same_rule(r, match_text, rule.valid_from, rule.valid_to, rule.amount_min, rule.amount_max)), None)
     return {"id": rule.id, "before": rule.match_text, "match_text": match_text,
             **{k: v for k, v in sim.items() if k not in ("to_rules", "from_rules")},
+            "closed": sim_shut["release"] + sim_shut["take"],
             "to_rules": named(sim["to_rules"]), "from_rules": named(sim["from_rules"]),
             "duplicate": {"id": dup.id, "match_text": dup.match_text, "category": dup.category} if dup else None}
 
@@ -1572,7 +1585,11 @@ def preview_delete_rule(
     rows = _rule_rows(session, company_id, rule_id)
     sim = simulate_delete(load_rules(session, company_id, ""), rule_id, rows)
     names = {r.id: r for r in session.exec(select(CategoryRule).where(CategoryRule.company_id == company_id)).all()}
-    return {"id": rule.id, "match_text": rule.match_text, "rows": len(rows),
+    # `_rule_rows` ya deja fuera los meses CERRADOS (FASE 16): se quedan como están; se cuentan para decirlo.
+    closed = session.exec(select(func.count(Transaction.id)).where(Transaction.company_id == company_id)
+                          .where(Transaction.matched_rule_id == rule_id).where(Transaction.source == "rule")
+                          .where(~month_close.open_rows())).one()
+    return {"id": rule.id, "match_text": rule.match_text, "rows": len(rows), "closed": closed,
             "to_rules": [{"id": k, "match_text": names[k].match_text, "category": names[k].category, "rows": n}
                          for k, n in sim["to_rules"].most_common()],
             "to_transfer": sim["to_transfer"], "to_pending": sim["to_pending"]}

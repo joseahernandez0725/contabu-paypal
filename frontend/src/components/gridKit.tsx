@@ -294,31 +294,61 @@ function looksLikeEditAttempt(e: KeyboardEvent): boolean {
 }
 
 /** El aviso discreto + cuándo mostrarlo. Monta UNA vez por grilla, sobre el mismo `hostRef` que ya
- *  usan `useUndoShortcut`/`useExternalClipboardGuard`. No hace nada si `canEdit` es true. */
-export function useReadOnlyNotice(hostRef: React.RefObject<HTMLElement | null>, canEdit: boolean) {
+ *  usan `useUndoShortcut`/`useExternalClipboardGuard`. No hace nada si `canEdit` es true.
+ *  🔄 31-oct (MES CERRADO, FASE 16): `lockedText` dice si la celda ENFOCADA está candada aunque el libro
+ *  se pueda editar (su fila es de un mes cerrado) y con qué texto; `notify(text)` lo muestra. Sin texto,
+ *  el aviso es el de siempre (lo pone quien pinta `<ReadOnlyNotice>`). */
+export function useReadOnlyNotice(hostRef: React.RefObject<HTMLElement | null>, canEdit: boolean,
+                                  lockedText?: () => string | null) {
   const [show, setShow] = useState(false);
+  const [text, setText] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
-  const notify = useCallback(() => {
+  const lockedRef = useRef(lockedText);
+  lockedRef.current = lockedText;
+  const notify = useCallback((msg?: string | null) => {
+    setText(msg ?? null);
     setShow(true);
     if (timer.current != null) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setShow(false), 2600);
+    timer.current = window.setTimeout(() => setShow(false), msg ? 4000 : 2600);
   }, []);
   useEffect(() => () => { if (timer.current != null) window.clearTimeout(timer.current); }, []);
+  const perCell = !!lockedText;
   useEffect(() => {
-    if (canEdit) return;
+    if (canEdit && !perCell) return;
     const host = hostRef.current;
     if (!host) return;
+    const attempt = () => {
+      if (!canEdit) { notify(); return; }
+      const msg = lockedRef.current?.();
+      if (msg) notify(msg);
+    };
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
-      if (looksLikeEditAttempt(e)) notify();
+      if (looksLikeEditAttempt(e)) attempt();
     };
-    const onDbl = () => notify();
     host.addEventListener("keydown", onKey);
-    host.addEventListener("dblclick", onDbl);
-    return () => { host.removeEventListener("keydown", onKey); host.removeEventListener("dblclick", onDbl); };
-  }, [canEdit, hostRef, notify]);
-  return { show, notify };
+    host.addEventListener("dblclick", attempt);
+    return () => { host.removeEventListener("keydown", onKey); host.removeEventListener("dblclick", attempt); };
+  }, [canEdit, perCell, hostRef, notify]);
+  return { show, text, notify };
+}
+
+/** "Septiembre de 2026" / "September 2026" a partir de "2026-09" (el `month` del 409 y de `getMonths`). */
+export function monthLabel(month: string, lang: string): string {
+  const [y, m] = month.split("-").map(Number);
+  if (!y || !m) return month;
+  const s = new Date(y, m - 1, 1).toLocaleDateString(lang.startsWith("es") ? "es" : "en-US", { month: "long", year: "numeric" });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** El texto de un MES CERRADO (FASE 16), traducido, o null si `err` no es eso. Acepta el error o su
+ *  texto ("month_closed:2026-09"): la pila de deshacer solo guarda el texto. */
+export function monthClosedText(t: (k: string, o?: any) => string, lang: string, err: unknown): string | null {
+  const raw = typeof err === "string" ? err : (err as Error | null)?.message ?? "";
+  const m = /^month_closed:(.*)$/.exec(raw);
+  if (!m) return null;
+  return t("sheet.monthClosed", { month: monthLabel(m[1], lang) });
 }
 
 /** El aviso en sí: discreto, abajo al centro, se esconde solo. */

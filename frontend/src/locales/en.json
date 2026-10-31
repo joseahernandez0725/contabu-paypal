@@ -889,7 +889,9 @@
       "created_one": "Rule {{k}} created · {{count}} transaction categorized",
       "created_other": "Rule {{k}} created · {{count}} transactions categorized",
       "subcategoryTab": "Press Tab to use the suggestion in gray.",
-      "needSub": "Write the subcategory"
+      "needSub": "Write the subcategory",
+      "closedKept_one": "{{count}} more matches, but it's in a closed month: it won't change.",
+      "closedKept_other": "{{count}} more match, but they're in closed months: they won't change."
     },
     "undoStyle_one": "highlight {{count}} rule",
     "undoStyle_other": "highlight {{count}} rules",
@@ -1016,7 +1018,9 @@
       "seamlessAbove": "“{{label}}” ({{cat}}) picks up right where this leaves off: no gaps or overlaps.",
       "gapBelow": "Leaves a {{gap}} gap after “{{label}}” ({{cat}}): transactions there would stay Pending.",
       "gapAbove": "Leaves a {{gap}} gap before “{{label}}” ({{cat}}): transactions there would stay Pending."
-    }
+    },
+    "closedKept_one": "{{count}} in a closed month would change too; it stays as it is.",
+    "closedKept_other": "{{count}} in closed months would change too; they stay as they are."
   },
   "verify": {
     "title": "Verify your email — we sent a link to {{email}}.",
@@ -1208,7 +1212,9 @@
       "since": "From {{d}}",
       "until": "Until {{d}}"
     },
-    "bookNote": "Book note"
+    "bookNote": "Book note",
+    "monthClosed": "{{month}} is closed: reopen it in Settings to change it.",
+    "monthClosedShort": "{{month}}: closed month"
   },
   "common": {
     "loading": "Loading…",
