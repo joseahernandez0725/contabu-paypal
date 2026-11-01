@@ -162,6 +162,7 @@ function App() {
       })
       .catch((e: Error & { email?: string }) => setPpNotice(e.message === "paypal_other_account"
         ? { tone: "warn", from, text: t("owner.paypal.err_other_account", { email: e.email }) }
+        : e.message === "paypal_in_use" ? { tone: "warn", from, text: t("owner.paypal.err_in_use") }
         : { tone: "error", from, text: `${t(`owner.paypal.err.${["paypal_network", "paypal_not_configured"].includes(e.message) ? e.message : "other"}`)} (${e.message})` }));
   }, [company, t]);
 

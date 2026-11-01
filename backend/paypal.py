@@ -145,6 +145,19 @@ def _money(m: Optional[dict]) -> Decimal:
     return Decimal(str((m or {}).get("value") or "0"))
 
 
+def skip_reason(d: dict) -> Optional[str]:
+    """Por qué un movimiento de PayPal NO se registra (o None si sí). Se cuenta y se declara (regla 4): nunca se
+    descarta en silencio. "pending" = aún no exitoso (base caja) · "currency" = no es USD · "hold" = retención."""
+    i = d.get("transaction_info") or {}
+    if i.get("transaction_status") != "S":
+        return "pending"
+    if (i.get("transaction_amount") or {}).get("currency_code", "USD") != "USD":
+        return "currency"
+    if (i.get("transaction_event_code") or "").startswith("T21"):
+        return "hold"
+    return None
+
+
 def rows_for(d: dict) -> list[dict]:
     """Las filas del libro que salen de UN movimiento de Transaction Search: 0 (no se asienta), 1 o 2 (venta +
     comisión). Cada fila: paypal_id, date, description, signed (con signo: + entró), event_code y `preset`
@@ -153,9 +166,7 @@ def rows_for(d: dict) -> list[dict]:
     code = i.get("transaction_event_code") or ""
     gross = _money(i.get("transaction_amount"))
     fee = _money(i.get("fee_amount"))
-    if i.get("transaction_status") != "S" or (i.get("transaction_amount") or {}).get("currency_code", "USD") != "USD":
-        return []
-    if code.startswith("T21"):                      # retenciones y liberaciones: el dinero no salió del negocio
+    if skip_reason(d):                               # se cuenta en `sync` (regla 4), no se asienta
         return []
     tid = i.get("transaction_id") or ""
     day = date.fromisoformat((i.get("transaction_initiation_date") or "")[:10])
@@ -257,6 +268,11 @@ def sync(session: Session, conn: PayPalConnection, company: Company) -> dict:
         session.add(conn); session.commit()
         raise
     candidates = [r for d in details for r in rows_for(d)]
+    skipped: dict[str, int] = {}
+    for d in details:
+        why = skip_reason(d)
+        if why:
+            skipped[why] = skipped.get(why, 0) + 1
     known = set(session.exec(select(PayPalEntry.paypal_id).where(PayPalEntry.company_id == company.id)
                              .where(PayPalEntry.paypal_id.in_({r["paypal_id"] for r in candidates} or {""}))).all())
     rules = load_rules(session, company.id, company.sector or "")
@@ -271,6 +287,7 @@ def sync(session: Session, conn: PayPalConnection, company: Company) -> dict:
     session.add(conn)
     session.commit()
     counts["transfers"] = match_transfers(session, company)
+    counts["skipped"] = skipped      # lo que PayPal trajo y NO se registró, por qué (regla 4: se declara)
     return counts
 
 
@@ -386,29 +403,6 @@ def paypal_status(company_id: int, user: User = Depends(current_user), session: 
     """El PayPal del libro, para la página Bancos de la consola."""
     console_company(company_id, user, session)
     return _status(session, _conn(session, company_id))
-
-
-@router.post("/api/companies/{company_id}/paypal/connect")
-def paypal_connect(company_id: int, user: User = Depends(current_user), session: Session = Depends(get_session)):
-    """Conecta el PayPal del negocio y trae su historial. Lo pueden hacer el DUEÑO (desde Cuentas: es su cuenta) y el
-    bookkeeper (Jose, 31-oct); no un VIEWER. Hoy solo existe el modo `first_party` (sandbox, el demo): Partner
-    Referrals respondió 403 sin ser partner aprobado (`FASE 16.B.md` §8). Agrega al plan las dos cuentas que PayPal
-    necesita. Devuelve el estado, nunca un secreto."""
-    company = client_writable_company(company_id, user, session)
-    if not configured():
-        raise HTTPException(status_code=503, detail={"code": "paypal_not_configured"})
-    conn = _conn(session, company_id)
-    if conn is None:
-        conn = PayPalConnection(company_id=company_id, mode="first_party", environment=environment(),
-                                connected_by_user_id=user.id)
-        session.add(conn)
-    ensure_accounts(session, company)
-    session.commit()
-    try:
-        counts = sync(session, conn, company)
-    except PayPalError as e:
-        _fail(e)
-    return {**_status(session, conn), "imported": counts}
 
 
 @router.post("/api/companies/{company_id}/paypal/sync")
@@ -647,6 +641,13 @@ def paypal_oauth(payload: OAuthReturn, user: User = Depends(current_user), sessi
     who["email"] = who.get("email") or demo_email
     who["payer_id"] = who.get("payer_id") or who.get("account_id")
     log.info("[paypal connect] libro=%s: conectado (%r)", company.id, who["email"])
+    # Candado (revisión del 1-nov): la cuenta de prueba (`first_party`) se conecta a UN SOLO libro a la vez — nunca, por
+    # descuido, al libro real en local. Para pasarla a otro libro, se desconecta primero del que la tiene.
+    other = session.exec(select(PayPalConnection).where(PayPalConnection.merchant_id == who["payer_id"])
+                         .where(PayPalConnection.company_id != company.id)).first() if who.get("payer_id") else None
+    if other is not None:
+        log.warning("[paypal connect] libro=%s: la cuenta de prueba ya está conectada al libro %s", company.id, other.company_id)
+        raise HTTPException(status_code=409, detail={"code": "paypal_in_use", "company_id": company.id})
     conn = _conn(session, company.id)
     if conn is None:
         conn = PayPalConnection(company_id=company.id, mode="first_party", environment=environment(),
@@ -669,10 +670,20 @@ def owner_accounts(company_id: int, user: User = Depends(current_user), session:
     owned_company(company_id, user, session)
     banks = session.exec(select(BankConnection).where(BankConnection.company_id == company_id)
                          .order_by(BankConnection.id)).all()
+    conn = _conn(session, company_id)
+    balance = None
+    if conn is not None and conn.mode == "first_party" and configured():
+        try:   # el saldo de la cuenta conectada (✅ /v1/reporting/balances); si PayPal no responde, no se muestra
+            b = (api("GET", "/v1/reporting/balances", params={"currency_code": "USD"}).get("balances") or [{}])[0]
+            balance = {"total": (b.get("total_balance") or {}).get("value"),
+                       "available": (b.get("available_balance") or {}).get("value")}
+        except PayPalError:
+            balance = None
     return {
         "banks": [{"institution": b.institution_name, "status": b.status,
                    "last_synced_at": b.last_synced_at.isoformat() if b.last_synced_at else None,
                    "accounts": [{"name": a.get("name"), "mask": a.get("mask")} for a in (b.accounts or [])]}
                   for b in banks],
-        "paypal": _status(session, _conn(session, company_id)),
+        "paypal": {**_status(session, conn), "balance": balance,
+                   "wallet_url": f"{_AUTH_HOSTS[environment()]}/myaccount/money"},
     }

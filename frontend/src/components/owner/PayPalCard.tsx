@@ -19,10 +19,12 @@ export function ImportedLine({ s }: { s: PayPalStatus }) {
   const { t } = useTranslation();
   if (!s.imported) return null;
   const i = s.imported;
+  const skipped = Object.values(i.skipped ?? {}).reduce((a, b) => a + b, 0);   // regla 4: lo no registrado se declara
   return (
     <p className="text-xs text-slate-600 bg-slate-50 rounded-lg px-2.5 py-1.5">
       {i.new === 0 ? t("owner.paypal.upToDate")
         : t("owner.paypal.imported", { count: i.new, rule: i.by_rule, paypal: i.by_paypal, pending: i.pending })}
+      {skipped > 0 && <> {t("owner.paypal.skipped", { count: skipped })}</>}
     </p>
   );
 }

@@ -67,7 +67,7 @@ def main() -> int:
         expect("sin cliente reconocido → pide elegirlo y la IA NI SE LLAMA",
                r.json().get("needs_customer") is True and not SEEN, (r.json().get("needs_customer"), len(SEEN)))
 
-        ANSWER.update({"amount": "500", "due_in_days": 15, "concept": "Remodelación de la cocina", "due_date": None})
+        ANSWER.update({"amount": "500", "due_in_days": 15, "concept": "Remodelación de la cocina"})
         r = client.post(url, headers=cl, json={"text": "Factúrale a ACME 500 dólares por la remodelación de la cocina, vence en 15 días",
                                                "lang": "es"})
         b = r.json()
@@ -88,12 +88,22 @@ def main() -> int:
         expect("el cliente que elige el dueño se usa", (r.json().get("customer") or {}).get("name") == "Ana López",
                (r.json().get("customer") or {}).get("name"))
 
-        ANSWER.update({"amount": "120.001", "due_date": "2000-01-01", "due_in_days": None, "concept": ""})
+        ANSWER.update({"amount": "120.001", "due_day": 31, "due_month": 2, "due_in_days": None, "concept": ""})
         b = client.post(url, headers=cl, json={"text": "factura a Acme por ciento veinte"}).json()
-        expect("el código valida: monto raro → vacío y aviso; fecha pasada → 15 días y aviso; sin concepto → aviso",
-               b["fields"]["amount"] is None and b["fields"]["due_date"] == (today + timedelta(days=15)).isoformat()
-               and {"amount_invalid", "due_past", "due_default", "concept_missing"} <= set(b["warnings"]),
-               (b["fields"], b["warnings"]))
+        expect("el código valida: monto raro → vacío y aviso; sin concepto → aviso; 31 de febrero → último día de febrero",
+               b["fields"]["amount"] is None and b["fields"]["due_date"].endswith(("-02-28", "-02-29"))
+               and {"amount_invalid", "concept_missing"} <= set(b["warnings"]), (b["fields"], b["warnings"]))
+
+        # El CÓDIGO calcula la fecha con las partes que extrae la IA (la IA no calcula).
+        import voice_invoice as vi
+        d0 = date(2026, 11, 1)   # domingo
+        cases = [({"due_weekday": "friday"}, date(2026, 11, 6)), ({"due_day": 15}, date(2026, 11, 15)),
+                 ({"due_day": 1}, date(2026, 12, 1)), ({"due_month": 12, "due_day": 5}, date(2026, 12, 5)),
+                 ({"due_month": 10, "due_day": 1}, date(2027, 10, 1)), ({"due_end_of_month": True}, date(2026, 11, 30)),
+                 ({"due_in_days": 14}, date(2026, 11, 15)), ({"due_weekday": "sunday"}, date(2026, 11, 8))]
+        got = [vi.resolve_due(vi.VoiceOut(**p), d0)[0] for p, _ in cases]
+        expect("fechas: viernes→6-nov · el 15→15-nov · el 1→1-dic · 5 de dic · 1 de oct→2027 · fin de mes · +14 · domingo→8-nov",
+               got == [w for _, w in cases], [g.isoformat() for g in got])
 
         with Session(engine) as s:
             n = s.exec(select(func.count(AgentCall.id)).where(AgentCall.company_id == company_id)

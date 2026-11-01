@@ -10,6 +10,8 @@ La IA NO decide ni calcula — solo extrae (regla de oro):
      por [CUSTOMER] antes de mandar el texto. Si no reconoce a ningún cliente, NO llama a la IA: pide elegirlo.
      Decisión de Jose (1-nov): Nemotron ve el dictado MENOS el cliente — una excepción acotada a la regla del 8-oct
      ("nunca montos ni nombres"): solo el texto que el dueño dicta para su factura, nunca datos del libro.
+     ⚠️ Límite (revisión del 1-nov, aceptado por Jose): se enmascaran los clientes GUARDADOS. Si el dueño ya eligió al
+     cliente y dicta otro nombre que no está en su lista, ese nombre SÍ llega a la IA. La pantalla lo avisa.
   2. Nemotron (Nebius) devuelve JSON estricto: monto, fecha o "en N días", concepto. Con topes y costo registrados
      (`agent_calls`, agente "invoice_voice").
   3. El CÓDIGO valida todo: monto (Decimal, > 0, 2 decimales, tope), fecha (no pasada; sin fecha → 15 días, avisado),
@@ -17,6 +19,7 @@ La IA NO decide ni calcula — solo extrae (regla de oro):
      cliente guardado.
 """
 
+import calendar
 import re
 import unicodedata
 from datetime import date, timedelta
@@ -75,10 +78,16 @@ class VoiceIn(BaseModel):
 
 
 class VoiceOut(BaseModel):
-    """Lo que Nemotron debe devolver (JSON estricto). Todo opcional: lo que no se dijo, no se inventa."""
+    """Lo que Nemotron debe devolver (JSON estricto). Todo opcional: lo que no se dijo, no se inventa.
+    La FECHA llega en PARTES (lo que se dijo); la calcula el código (`resolve_due`) — la IA no calcula (1-nov: cuando
+    el modelo resolvía "el próximo viernes" la fecha no siempre cuadraba)."""
     amount: Optional[str] = None          # "500.00" — solo cifras y punto decimal
-    due_date: Optional[str] = None        # "YYYY-MM-DD" si se dijo una fecha
-    due_in_days: Optional[int] = None     # si se dijo "en 15 días", "next week" (7)…
+    due_in_days: Optional[int] = None     # "en 15 días" → 15 · "mañana" → 1 · "en una semana" → 7
+    due_weekday: Optional[str] = None     # "el viernes" / "next Friday" → "friday"
+    due_day: Optional[int] = None         # "el 15" → 15
+    due_month: Optional[int] = None       # "de noviembre" → 11
+    due_year: Optional[int] = None        # solo si se dijo el año
+    due_end_of_month: Optional[bool] = None   # "a fin de mes" / "end of the month"
     concept: Optional[str] = None         # el concepto, corto, en el idioma del dictado
 
 
@@ -86,11 +95,56 @@ _SYSTEM = """You extract invoice fields from a short dictation by a small-busine
 replaced by [CUSTOMER]: never guess it. Return ONLY JSON with these keys:
 - "amount": the invoice total as digits with a dot for decimals (e.g. "500.00", "1250.5"); words like "quinientos" or
   "two thousand" become digits; null if no amount was said. Never add tax or compute anything else.
-- "due_date": "YYYY-MM-DD" if a calendar date was said (use TODAY to resolve "the 15th", "next Friday"); else null.
-- "due_in_days": an integer if a relative term was said ("in 15 days", "en una semana" = 7); else null.
+- The DUE DATE, only as the parts that were said (NEVER compute a date yourself):
+  "due_in_days": integer for "in 15 days" / "en 15 días" (15), "tomorrow" / "mañana" (1), "in a week" / "en una semana" (7),
+  "in two weeks" (14), "in a month" (30); "due_weekday": english weekday name for "on Friday" / "el viernes" / "next
+  Friday" ("friday"); "due_day": the day number; "due_month": the month number (1-12) when a month is named;
+  "due_year": only if a year was said; "due_end_of_month": true for "end of the month" / "a fin de mes".
+  Examples: "due December 10th" -> due_month 12, due_day 10 · "vence el 5 de diciembre" -> due_day 5, due_month 12 ·
+  "due the 15th" / "vence el 15" -> due_day 15 · "due March 3, 2027" -> due_month 3, due_day 3, due_year 2027.
+  Leave every other due key null.
 - "concept": what the invoice is for, short (max 80 characters), in the dictation's language, no amounts or dates;
   null if not said.
 Do not invent anything that was not said."""
+
+
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+def resolve_due(v: VoiceOut, today: date) -> tuple[Optional[date], bool]:
+    """EL CÓDIGO calcula la fecha de vencimiento con las partes que se dijeron. Devuelve (fecha o None, ¿inválida?).
+    · mes + día → esa fecha (sin año: este año; si ya pasó, el siguiente) · solo día → este mes; si ya pasó o es hoy, el
+    siguiente · día de la semana → el próximo (después de hoy) · fin de mes → el último día de este mes · en N días."""
+    def clamp(y: int, m: int, d: int) -> date:
+        return date(y, m, min(d, calendar.monthrange(y, m)[1]))
+    try:
+        if v.due_month and v.due_day:
+            if not (1 <= v.due_month <= 12 and 1 <= v.due_day <= 31):
+                return None, True
+            d = clamp(v.due_year or today.year, v.due_month, v.due_day)
+            if not v.due_year and d < today:
+                d = clamp(today.year + 1, v.due_month, v.due_day)
+            return d, False
+        if v.due_day:
+            if not 1 <= v.due_day <= 31:
+                return None, True
+            d = clamp(today.year, today.month, v.due_day)
+            if d <= today:   # "vence el 1" dicho el día 1 → el 1 del mes SIGUIENTE (vencer hoy rara vez es la intención)
+                y, m = (today.year + 1, 1) if today.month == 12 else (today.year, today.month + 1)
+                d = clamp(y, m, v.due_day)
+            return d, False
+        if v.due_weekday:
+            wd = (v.due_weekday or "").strip().lower()
+            if wd not in _WEEKDAYS:
+                return None, True
+            return today + timedelta(days=(_WEEKDAYS.index(wd) - today.weekday() - 1) % 7 + 1), False
+        if v.due_end_of_month:
+            return clamp(today.year, today.month, 31), False
+        if v.due_in_days is not None:
+            return (today + timedelta(days=v.due_in_days), False) if 0 <= v.due_in_days <= 365 else (None, True)
+    except ValueError:
+        return None, True
+    return None, False
 
 
 def _check(raw: dict, today: date) -> tuple[dict, list[str]]:
@@ -112,14 +166,9 @@ def _check(raw: dict, today: date) -> tuple[dict, list[str]]:
             warnings.append("amount_invalid")
     else:
         warnings.append("amount_missing")
-    due = None
-    if v.due_date:
-        try:
-            due = date.fromisoformat(v.due_date[:10])
-        except ValueError:
-            warnings.append("due_invalid")
-    elif v.due_in_days is not None and 0 <= v.due_in_days <= 365:
-        due = today + timedelta(days=v.due_in_days)
+    due, bad = resolve_due(v, today)
+    if bad:
+        warnings.append("due_invalid")
     if due is not None and due < today:
         warnings.append("due_past")
         due = None
@@ -158,15 +207,21 @@ def parse_voice(company_id: int, payload: VoiceIn, user: User = Depends(current_
     masked = mask(text, named + ([chosen] if chosen else []))
     today = date.today()
     user_msg = f"TODAY: {today.isoformat()}\nLANGUAGE: {payload.lang}\nDICTATION: {masked}"
-    try:
-        reply = nemotron.chat_json(_SYSTEM, user_msg, VoiceOut, max_tokens=400, reasoning=False)
-    except nemotron.NemotronUnavailable:
-        raise HTTPException(status_code=503, detail="ai_unavailable")
-    except nemotron.NemotronError as e:
-        agent_calls.record(session, company, "invoice_voice", e.usage, outcome=e.code, user_id=user.id,
-                           model=nemotron.model_name())
-        session.commit()
-        raise HTTPException(status_code=502, detail="ai_failed")
+    # Una respuesta normal usa ~75 tokens; a veces el modelo se extiende y se queda sin espacio (✅ 1-nov: 1 de 9 con
+    # max_tokens=400 → out_of_tokens). Margen amplio y UN reintento si pasa; cada intento queda registrado.
+    reply = None
+    for attempt in range(2):
+        try:
+            reply = nemotron.chat_json(_SYSTEM, user_msg, VoiceOut, max_tokens=1200, reasoning=False)
+            break
+        except nemotron.NemotronUnavailable:
+            raise HTTPException(status_code=503, detail="ai_unavailable")
+        except nemotron.NemotronError as e:
+            agent_calls.record(session, company, "invoice_voice", e.usage, outcome=e.code, user_id=user.id,
+                               model=nemotron.model_name())
+            session.commit()
+            if e.code != "out_of_tokens" or attempt == 1:
+                raise HTTPException(status_code=502, detail="ai_failed")
     fields, warnings = _check(reply.data, today)
     agent_calls.record(session, company, "invoice_voice", reply.usage, user_id=user.id,
                        items_out=1, items_valid=int(not warnings or warnings == ["due_default"]))

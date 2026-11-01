@@ -134,8 +134,21 @@ def main() -> int:
                rows.get(("PAYPAL PAYMENT TO HOME DEPOT", D("25.00"), False)) == ("COGS", "Materials", "rule"),
                rows.get(("PAYPAL PAYMENT TO HOME DEPOT", D("25.00"), False)))
         expect("la retención y lo pendiente no se asientan", len(rows) == 8, len(rows))
+        expect("…pero se DECLARAN (regla 4): 1 retención, 1 pendiente", got.get("skipped") == {"hold": 1, "pending": 1},
+               got.get("skipped"))
         expect("el plan gana Merchant fees y Returns and allowances", {"Merchant fees", "Returns and allowances"} <= chart,
                sorted({"Merchant fees", "Returns and allowances"} - chart) or "ok")
+
+        # Candado: la MISMA cuenta de PayPal no se conecta a un segundo libro.
+        with Session(engine) as s:
+            from models import Company, PayPalConnection
+            other = Company(name="PERMCHECK SECOND BOOK", sector="construction", firm_id=s.get(Company, company_id).firm_id,
+                            user_id=s.get(Company, company_id).user_id)
+            s.add(other); s.commit(); s.refresh(other); other_id = other.id
+        url2 = client.post(f"/api/companies/{other_id}/paypal/authorize", headers=bk).json()["url"]
+        r = client.post("/api/paypal/oauth", headers=bk, json={"code": "c", "state": parse_qs(urlparse(url2).query)["state"][0]})
+        expect("la misma cuenta de PayPal NO se conecta a un segundo libro (409 paypal_in_use)",
+               r.status_code == 409 and r.json()["detail"]["code"] == "paypal_in_use", r.status_code)
 
         r = client.post(f"/api/companies/{company_id}/paypal/sync", headers=bk)
         got = r.json().get("imported") if r.status_code == 200 else r.json()

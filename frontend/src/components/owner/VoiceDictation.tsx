@@ -61,12 +61,12 @@ export default function VoiceDictation({ customerId, onFill }: {
   }
 
   return (
-    <div className="sm:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50/40 p-3 space-y-2">
-      <div className="flex items-center gap-2">
+    <div className="sm:col-span-2 min-w-0 rounded-xl border border-emerald-200 bg-emerald-50/40 p-3 space-y-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
         <span className="text-sm font-semibold text-slate-900">{t("owner.voice.title")}</span>
         <span className="text-xs text-slate-500">{t("owner.voice.subtitle")}</span>
       </div>
-      <div className="flex gap-2 items-start">
+      <div className="flex gap-2 items-start min-w-0">
         {Rec && (
           <button type="button" onClick={toggle} aria-label={t("owner.voice.mic")} title={t("owner.voice.mic")}
                   className={`shrink-0 size-10 rounded-full flex items-center justify-center text-white ${listening ? "bg-rose-600 animate-pulse" : "bg-emerald-700 hover:bg-emerald-800"}`}>
@@ -77,7 +77,7 @@ export default function VoiceDictation({ customerId, onFill }: {
         )}
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} maxLength={500}
                   placeholder={t("owner.voice.placeholder")}
-                  className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm" />
+                  className="flex-1 min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm" />
       </div>
       {listening && <p className="text-xs text-rose-700">{t("owner.voice.listening")}</p>}
       {!Rec && <p className="text-xs text-slate-500">{t("owner.voice.noMic")}</p>}
@@ -86,7 +86,7 @@ export default function VoiceDictation({ customerId, onFill }: {
           {busy ? t("owner.paypal.working") : t("owner.voice.fill")}
         </button>
         {text && <button type="button" onClick={() => { setText(""); setMsg(null); }} className={BTN_SECONDARY}>{t("owner.voice.clear")}</button>}
-        <span className="text-[11px] text-slate-500">{t("owner.voice.privacy")}</span>
+        <span className="text-[11px] text-slate-500">{t("owner.voice.privacy")} {t("owner.voice.privacyLimit")}</span>
       </div>
       {msg && <p className={`text-xs ${msg.tone === "error" ? "text-rose-700" : msg.tone === "warn" ? "text-amber-800" : "text-slate-700"}`}>{msg.text}</p>}
     </div>

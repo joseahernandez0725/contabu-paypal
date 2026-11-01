@@ -1647,7 +1647,21 @@
       "banks": "Banks",
       "banksTitle": "Bank accounts",
       "noBanks": "No bank accounts connected",
-      "disconnected": "Disconnected"
+      "disconnected": "Disconnected",
+      "connectedTitle_one": "1 account connected to ContaBu",
+      "connectedTitle_other": "{{count}} accounts connected to ContaBu",
+      "connectedBody": "It's the same set of books {{name}} keeps: what flows through these accounts reaches your books and your bookkeeper sees it.",
+      "noneConnected": "No accounts connected yet: connect your PayPal and link your bank.",
+      "ppAvailable": "Available PayPal balance",
+      "ppTotal": "Total balance: {{amount}}",
+      "ppWithdraw": "Transfer to my bank",
+      "ppWithdrawNote": "Money from your invoices stays in your PayPal balance. A standard transfer to your bank is free; an instant transfer costs 1.5% (minimum $0.50).",
+      "noBanksHelp": "Link your bank so your transactions flow into your books automatically.",
+      "linkBank": "Link a bank",
+      "linkBankNote": "Secure connection through Plaid: your credentials never pass through ContaBu. (Test mode: user_good / pass_good.)",
+      "bankLinked": "{{bank}} is linked: its transactions now flow into your books.",
+      "bankDuplicate": "{{bank}} is already linked to your books.",
+      "bankError": "Couldn't link the bank. Please try again."
     },
     "invoices": {
       "new": "New invoice",
@@ -1699,7 +1713,23 @@
         "name_and_email_required": "Enter the customer's name and a valid email (no spaces or special characters).",
         "other": "PayPal returned an error. Please try again.",
         "paypal_field": "PayPal rejected a field on the invoice ({{field}}). Check it and try again."
-      }
+      },
+      "outstandingTitle": "Outstanding",
+      "overdueTitle": "Overdue invoices",
+      "collectedTitle": "Collected this year",
+      "howItWorks": "Your customer pays by card or PayPal and the payment is recorded in your books automatically.",
+      "listTitle": "Your invoices",
+      "noneHint": "Create the first one with “New invoice”; you can also dictate it.",
+      "inBooksShort": "in your books",
+      "from": "From",
+      "docTitle": "INVOICE",
+      "issued": "Issued {{date}}",
+      "billTo": "Bill to",
+      "qty": "Qty",
+      "price": "Price",
+      "totalDue": "Total due",
+      "payWith": "Your customer can pay by credit or debit card, or with their PayPal account.",
+      "feeEstimate": "Estimated PayPal fee: {{fee}} (3.49% + $0.49) · you'd receive about {{net}}."
     },
     "preview": {
       "title": "Preview:",
@@ -1794,7 +1824,10 @@
         "cards": "Your customers pay by credit or debit card, even without a PayPal account.",
         "convert": "Already have a personal account? You can convert it to a business account and keep your history."
       },
-      "convertLink": "Convert my personal account"
+      "convertLink": "Convert my personal account",
+      "skipped_one": "1 PayPal transaction was not recorded (pending at PayPal, another currency, or a hold).",
+      "skipped_other": "{{count}} PayPal transactions were not recorded (pending at PayPal, another currency, or holds).",
+      "err_in_use": "This PayPal test account is already connected to another book. Disconnect it there first."
     },
     "transfers": {
       "title": "Transfers to bank accounts",
@@ -1821,7 +1854,7 @@
       "noMic": "Your browser has no voice dictation: use your keyboard's microphone in this same field.",
       "fill": "Fill in the form",
       "clear": "Clear",
-      "privacy": "Processed by AI (NVIDIA Nemotron) without your customer's name. Nothing is sent until you confirm.",
+      "privacy": "Processed by AI (NVIDIA Nemotron) without your saved customer's name. Nothing is sent until you confirm.",
       "filled": "Form filled from your dictation. Review it before continuing.",
       "pickOne": "The dictation matches more than one customer: pick one in the list (marked ★) and fill again.",
       "noCustomer": "I didn't find that customer in your list: pick or add them, then fill the form again.",
@@ -1840,7 +1873,29 @@
         "ai_unavailable": "AI isn't available right now. Fill in the form manually.",
         "text_required": "Type or dictate the text first.",
         "other": "Couldn't process the dictation. Try again or fill in the form manually."
-      }
+      },
+      "privacyLimit": "If you dictate a name that isn't in your list, that name does reach the AI."
+    },
+    "lastClosed": "Last closed month: {{month}}",
+    "quick": {
+      "hint": "Bill your customers and get paid by card or PayPal.",
+      "overdue_one": "1 overdue",
+      "overdue_other": "{{count}} overdue"
+    },
+    "statement": {
+      "kicker": "Statements",
+      "title": "Upload a bank statement",
+      "sub": "For a bank you'd rather not link, or for earlier months. Your bookkeeper receives it in your books.",
+      "choose": "Choose file",
+      "upload": "Upload",
+      "formats": "CSV or Excel (.xlsx) downloaded from your bank.",
+      "progress": "Uploading {{done}} of {{total}}…",
+      "done": "Done: {{inserted}} transactions reached your books ({{dup}} were already there; {{held}} are on hold as too recent).",
+      "error": "Couldn't upload the file. Make sure it's a CSV or Excel file from your bank.",
+      "askAccount_one": "The file doesn't say which account it's from. Enter the account's last 4 digits for 1 transaction.",
+      "askAccount_other": "The file doesn't say which account it's from. Enter the account's last 4 digits for {{count}} transactions.",
+      "saveAccount": "Save account",
+      "accountError": "Couldn't save the account. Enter at least 4 digits."
     }
   }
 }

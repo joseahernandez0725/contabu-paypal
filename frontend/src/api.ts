@@ -1421,7 +1421,8 @@ export interface PayPalStatus {
   status?: string;                // active | error
   last_error?: string | null;
   last_synced_at?: string | null;
-  imported?: { new: number; by_rule: number; by_paypal: number; by_transfer: number; pending: number; known: number };
+  imported?: { new: number; by_rule: number; by_paypal: number; by_transfer: number; pending: number; known: number;
+               skipped?: Record<string, number> };   // lo que PayPal trajo y NO se registró (pending · currency · hold)
 }
 
 async function paypalCall(path: string, method = "GET"): Promise<PayPalStatus> {
@@ -1433,14 +1434,13 @@ async function paypalCall(path: string, method = "GET"): Promise<PayPalStatus> {
   return res.json();
 }
 export const getPayPal = () => paypalCall("");
-export const connectPayPal = () => paypalCall("/connect", "POST");
 export const syncPayPal = () => paypalCall("/sync", "POST");
 export const disconnectPayPal = () => paypalCall("", "DELETE");
 
 /** La ventana Cuentas del dueño: sus bancos (Plaid) y su PayPal. Sin tokens ni transacciones. */
 export interface OwnerAccounts {
   banks: { institution: string | null; status: string; last_synced_at: string | null; accounts: { name: string | null; mask: string | null }[] }[];
-  paypal: PayPalStatus;
+  paypal: PayPalStatus & { balance?: { total: string | null; available: string | null } | null; wallet_url?: string };
 }
 export async function getOwnerAccounts(): Promise<OwnerAccounts> {
   const res = await fetch(`${API}/api/owner/companies/${cid()}/accounts`, { headers: await authHeaders() });
