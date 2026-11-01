@@ -739,3 +739,87 @@ class MonthClose(SQLModel, table=True):
     reopened_at: Optional[datetime] = Field(default=None)
     reopened_by_user_id: Optional[int] = Field(default=None)
     snapshot: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+
+
+class PayPalConnection(SQLModel, table=True):
+    """EL PAYPAL DEL NEGOCIO conectado a UN libro (FASE 16 Paso 3). PayPal es una cuenta más del libro: sus ventas,
+    comisiones, reembolsos y retiros al banco entran como transacciones (`paypal.py`).
+
+    `mode`: "first_party" = las credenciales de la app de ContaBu sobre UNA cuenta de prueba (el demo; solo en
+    sandbox) · "partner" = el negocio dio permiso por Partner Referrals (producción; exige ser partner aprobado, ver
+    `FASE 16.B.md` §2 y §8). El resto del código no distingue. Ningún secreto vive aquí.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id", index=True, unique=True)   # ON DELETE CASCADE (migración)
+    mode: str = Field(default="first_party")
+    environment: str = Field(default="sandbox")
+    merchant_id: Optional[str] = Field(default=None)       # el del negocio en modo partner
+    status: str = Field(default="active")                  # active | error
+    last_error: Optional[str] = Field(default=None)
+    last_synced_at: Optional[datetime] = Field(default=None)
+    connected_by_user_id: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class PayPalEntry(SQLModel, table=True):
+    """Qué transacción del libro salió de qué movimiento de PayPal (deduplica la sincronización y liga la venta con
+    su comisión). `paypal_id` = el `transaction_id` de PayPal, y "<id>:fee" para la fila de la comisión."""
+    __table_args__ = (UniqueConstraint("company_id", "paypal_id", name="uq_paypalentry_company_id"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id", index=True)                # ON DELETE CASCADE (migración)
+    paypal_id: str
+    event_code: str                                        # T0006, T1107, T0400… (tabla oficial de T-codes)
+    transaction_id: Optional[int] = Field(default=None, foreign_key="transaction.id")   # ON DELETE SET NULL
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class PayPalTransferMatch(SQLModel, table=True):
+    """Un RETIRO de PayPal al banco emparejado con su DEPÓSITO en el banco (FASE 16 Paso 4): los dos quedan como
+    `Transfer` (fuera del P&L) y la venta no se cuenta dos veces. Lo empareja el CÓDIGO (mismo monto, 0 a 7 días
+    después); si hay duda, lo confirma el bookkeeper. `status`: "auto" | "confirmed" | "rejected" (el bookkeeper
+    dijo que ningún depósito es ese retiro: deja de proponerse). `bank_tx_id` nulo solo en "rejected"."""
+    __table_args__ = (UniqueConstraint("withdrawal_tx_id", name="uq_paypaltransfermatch_withdrawal"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id", index=True)                # ON DELETE CASCADE (migración)
+    withdrawal_tx_id: int = Field(foreign_key="transaction.id")                   # ON DELETE CASCADE
+    bank_tx_id: Optional[int] = Field(default=None, foreign_key="transaction.id")  # ON DELETE SET NULL
+    status: str
+    decided_by_user_id: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class InvoiceCustomer(SQLModel, table=True):
+    """Un CLIENTE del negocio, a quien el dueño le factura (FASE 16 Paso 5). Lista guardada: el formulario y el dictado
+    (Paso 6) eligen de aquí — el correo nunca se dicta."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id", index=True)                # ON DELETE CASCADE (migración)
+    name: str
+    email: str
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class Invoice(SQLModel, table=True):
+    """Una FACTURA del dueño, emitida con la Invoicing API de PayPal (FASE 16 Paso 5). `status` es el de PayPal
+    (DRAFT, SENT, PAID…); "vencida" no existe en PayPal: la calcula el código (enviada, sin pagar y `due_date` pasada).
+    Cuando se paga, la venta entra al libro (`transaction_id`) con el id del pago de PayPal (`payment_id`), el mismo
+    que trae Transaction Search: así no se duplica y la comisión llega en la siguiente sincronización."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id", index=True)                # ON DELETE CASCADE (migración)
+    customer_id: Optional[int] = Field(default=None, foreign_key="invoicecustomer.id")   # ON DELETE SET NULL
+    paypal_invoice_id: Optional[str] = Field(default=None, index=True)
+    number: Optional[str] = Field(default=None)
+    concept: str
+    amount: Decimal = Field(max_digits=14, decimal_places=2)
+    currency: str = Field(default="USD")
+    due_date: date
+    status: str = Field(default="DRAFT")
+    recipient_view_url: Optional[str] = Field(default=None)
+    payment_id: Optional[str] = Field(default=None)
+    transaction_id: Optional[int] = Field(default=None, foreign_key="transaction.id")    # ON DELETE SET NULL
+    sent_at: Optional[datetime] = Field(default=None)
+    paid_at: Optional[datetime] = Field(default=None)
+    last_checked_at: Optional[datetime] = Field(default=None)
+    created_by_user_id: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=_utcnow)

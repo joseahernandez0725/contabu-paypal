@@ -1770,17 +1770,71 @@
       "excludes": "No incluye transferencias entre cuentas propias, aportes de capital ni retiros del dueño."
     },
     "accounts": {
-      "title": "Cuentas conectadas",
-      "body": "Aquí aparecerán tus cuentas bancarias y de PayPal, con la fecha de su última sincronización."
+      "meta": "Cuentas que alimentan tu contabilidad",
+      "count_one": "cuenta conectada",
+      "count_other": "cuentas conectadas",
+      "banks": "Bancos",
+      "banksTitle": "Cuentas bancarias",
+      "noBanks": "Sin cuentas bancarias conectadas",
+      "disconnected": "Desconectada"
     },
     "invoices": {
-      "title": "Cobros",
-      "body": "Aquí podrás emitir facturas y cobrarlas con tarjeta o PayPal. Cada pago se registra automáticamente en tu contabilidad."
+      "new": "Nueva factura",
+      "refresh": "Actualizar estado",
+      "outstanding": "por cobrar",
+      "overdue_one": "vencida",
+      "overdue_other": "vencidas",
+      "collected": "cobrado en el año",
+      "connectFirst": "Para emitir facturas, conecta primero tu cuenta de PayPal en Cuentas.",
+      "customer": "Cliente",
+      "pickCustomer": "Elige un cliente",
+      "newCustomer": "Nuevo cliente",
+      "customerName": "Nombre o razón social",
+      "customerEmail": "Correo de facturación",
+      "saveCustomer": "Guardar cliente",
+      "concept": "Concepto",
+      "amount": "Monto (USD)",
+      "dueDate": "Fecha de vencimiento",
+      "review": "Revisar",
+      "cancel": "Cancelar",
+      "reviewTitle": "Revisa la factura antes de enviarla",
+      "total": "Total",
+      "reviewNote": "PayPal enviará la factura a {{email}} con un enlace para pagar con tarjeta o PayPal. Al recibir el pago, se registra automáticamente en tu contabilidad.",
+      "send": "Enviar factura",
+      "saveDraft": "Guardar como borrador",
+      "edit": "Modificar",
+      "none": "Todavía no has emitido facturas.",
+      "due": "vence el {{date}}",
+      "inBooks": "registrada en contabilidad",
+      "confirmSend": "¿Enviar a {{email}}?",
+      "view": "Ver factura",
+      "status": {
+        "DRAFT": "Borrador",
+        "SENT": "Enviada",
+        "PAID": "Pagada",
+        "OVERDUE": "Vencida",
+        "PARTIALLY_PAID": "Pago parcial",
+        "CANCELLED": "Cancelada",
+        "UNPAID": "Pendiente de pago",
+        "PAYMENT_PENDING": "Pago en proceso",
+        "SCHEDULED": "Programada"
+      },
+      "err": {
+        "load": "No se pudieron cargar las facturas.",
+        "bad_amount": "Revisa el monto: mayor que cero y con dos decimales como máximo.",
+        "bad_concept": "Escribe el concepto de la factura.",
+        "bad_due_date": "La fecha de vencimiento no puede ser anterior a hoy.",
+        "paypal_not_connected": "Conecta tu cuenta de PayPal en Cuentas antes de facturar.",
+        "name_and_email_required": "Escribe el nombre y un correo válido del cliente (sin espacios ni caracteres especiales).",
+        "other": "PayPal devolvió un error. Inténtalo de nuevo.",
+        "paypal_field": "PayPal rechazó un dato de la factura ({{field}}). Revísalo e inténtalo de nuevo."
+      }
     },
     "preview": {
       "title": "Vista previa:",
       "body": "así ve el portal el dueño del negocio. Solo lectura.",
-      "exit": "Volver a la consola"
+      "exit": "Volver a la consola",
+      "disabled": "Solo lectura en la vista previa"
     },
     "access": {
       "title": "Dueño del negocio",
@@ -1833,6 +1887,89 @@
       "showTable": "Ver como tabla",
       "hideTable": "Ocultar la tabla",
       "category": "Categoría"
+    },
+    "paypal": {
+      "connect": "Conectar PayPal",
+      "sync": "Actualizar",
+      "disconnect": "Desconectar",
+      "working": "Procesando…",
+      "sandbox": "sandbox",
+      "connected": "PayPal conectado",
+      "notConnected": "PayPal no conectado",
+      "lastSync": "Última sincronización: {{date}}",
+      "neverSynced": "Sin sincronizar todavía",
+      "help": "Las ventas entran por el monto bruto y la comisión se registra aparte en Merchant fees; los reembolsos se restan de los ingresos y los retiros al banco quedan fuera del P&L. Las reglas del libro se aplican primero.",
+      "ownerHelp": "Conecta tu cuenta de PayPal para que tus ventas, comisiones y reembolsos lleguen a tu contabilidad.",
+      "upToDate": "Sin transacciones nuevas.",
+      "imported_one": "1 transacción importada ({{rule}} por regla, {{paypal}} por tipo de PayPal, {{pending}} pendientes de clasificar).",
+      "imported_other": "{{count}} transacciones importadas ({{rule}} por regla, {{paypal}} por tipo de PayPal, {{pending}} pendientes de clasificar).",
+      "err": {
+        "paypal_not_configured": "PayPal no está configurado en este servidor.",
+        "paypal_auth_failed": "PayPal rechazó las credenciales.",
+        "paypal_network": "No se pudo conectar con PayPal. Inténtalo de nuevo.",
+        "paypal_not_connected": "PayPal no está conectado.",
+        "other": "PayPal devolvió un error. Inténtalo de nuevo."
+      },
+      "connectWith": "Conectar con",
+      "heroTitle": "Conecta tu cuenta de PayPal para negocios",
+      "heroBody": "Tus ventas, comisiones y reembolsos de PayPal llegan solos a tu contabilidad, y podrás emitir facturas y cobrarlas con tarjeta o PayPal.",
+      "connectedNotice": "PayPal conectado ({{email}}).",
+      "returnCancelled": "Se canceló la conexión con PayPal.",
+      "err_other_account": "Iniciaste sesión en PayPal como {{email}}. En este demo solo se puede conectar la cuenta de prueba del negocio; en producción, PayPal te pediría autorizar el acceso a tu propia cuenta.",
+      "openAccount": "Abrir una cuenta para negocios",
+      "hero": {
+        "needBusiness": "Para emitir facturas necesitas una cuenta de PayPal para negocios.",
+        "noCost": "Abrirla no cuesta nada: PayPal solo cobra una comisión por cada pago recibido.",
+        "cards": "Tus clientes te pagan con tarjeta de crédito o débito, aunque no tengan PayPal.",
+        "convert": "¿Ya tienes una cuenta personal? Puedes convertirla en una de negocios sin perder tu historial."
+      },
+      "convertLink": "Convertir mi cuenta personal"
+    },
+    "transfers": {
+      "title": "Transferencias a cuentas bancarias",
+      "summary": "{{matched}} emparejadas · {{proposals}} por confirmar · {{unmatched}} sin depósito",
+      "rematch": "Buscar depósitos",
+      "help": "Cada retiro de PayPal se empareja con su depósito en el banco (mismo monto, hasta {{days}} días después) y ambos quedan fuera del P&L, para que la venta no se registre dos veces.",
+      "toConfirm": "Por confirmar:",
+      "withdrawal": "retiro de {{amount}} del {{date}}",
+      "confirm": "Confirmar",
+      "none": "Ninguno corresponde",
+      "auto": "emparejada automáticamente",
+      "confirmed": "confirmada",
+      "unmatched_one": "1 retiro sin depósito registrado en el banco:",
+      "unmatched_other": "{{count}} retiros sin depósito registrado en el banco:",
+      "monthClosed": "Ese depósito está en un periodo cerrado: reábrelo en Ajustes para emparejarlo.",
+      "error": "No se pudo actualizar la transferencia. Inténtalo de nuevo."
+    },
+    "voice": {
+      "title": "Dictar la factura",
+      "subtitle": "Di a quién, cuánto, por qué y cuándo vence.",
+      "mic": "Dictar con el micrófono",
+      "placeholder": "Ej.: Factúrale a Acme 1,250 dólares por la instalación del aire acondicionado, vence el 20 de noviembre.",
+      "listening": "Escuchando… habla con naturalidad; puedes corregir el texto antes de usarlo.",
+      "noMic": "Tu navegador no tiene dictado por voz: usa el micrófono del teclado en este mismo campo.",
+      "fill": "Llenar el formulario",
+      "clear": "Borrar",
+      "privacy": "Lo procesa la IA (NVIDIA Nemotron) sin el nombre de tu cliente. Nada se envía hasta que confirmes.",
+      "filled": "Formulario llenado con tu dictado. Revísalo antes de continuar.",
+      "pickOne": "El dictado coincide con más de un cliente: elige cuál en la lista (marcados con ★) y vuelve a llenar.",
+      "noCustomer": "No reconocí al cliente en tu lista: elígelo o agrégalo y vuelve a llenar el formulario.",
+      "micError": "No se pudo usar el micrófono. Revisa el permiso del navegador o escribe el texto.",
+      "warn": {
+        "amount_missing": "No escuché el monto: escríbelo.",
+        "amount_invalid": "El monto no es válido: revísalo.",
+        "due_default": "Sin fecha de vencimiento: se propone a 15 días.",
+        "due_past": "La fecha dicha ya pasó.",
+        "due_invalid": "No entendí la fecha.",
+        "concept_missing": "No escuché el concepto: escríbelo.",
+        "unreadable": "No pude entender el dictado."
+      },
+      "err": {
+        "ai_cap_reached": "Se alcanzó el límite diario de uso de la IA. Llena el formulario a mano.",
+        "ai_unavailable": "La IA no está disponible ahora. Llena el formulario a mano.",
+        "text_required": "Escribe o dicta el texto primero.",
+        "other": "No se pudo procesar el dictado. Inténtalo de nuevo o llena el formulario a mano."
+      }
     }
   }
 }

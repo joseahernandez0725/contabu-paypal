@@ -24,7 +24,7 @@ from sqlmodel import Session, select
 from auth import console_company, current_user, effective_role, owned_company, owner_company
 from db import get_session
 import month_close
-from models import Company, CompanyMember, Firm, FirmMember, Role, User
+from models import Company, CompanyMember, Firm, FirmMember, PayPalConnection, Role, User
 
 router = APIRouter()
 
@@ -53,6 +53,9 @@ def owner_home(company_id: int, user: User = Depends(current_user), session: Ses
         "preview": role != Role.CLIENT,
         "closed_months": month_close.owner_months(session, company.id),
         "years": month_close.owner_years(session, company.id),   # el año acumulado (SQL sobre las fotos)
+        # ¿Ya conectó su PayPal? El portal lo pide a la vista mientras no (Jose, 1-nov: es clave en el demo).
+        "paypal": {"connected": session.exec(select(PayPalConnection.id)
+                                             .where(PayPalConnection.company_id == company.id)).first() is not None},
     }
 
 

@@ -29,7 +29,8 @@ DAILY_CAP = int(os.getenv("AGENT_DAILY_CALLS") or (20 if _DEMO else 200))
 # crédito del plan gratis (1.000/mes) y la caché es por oficina (cada visitante del demo busca de nuevo).
 DAILY_SEARCH_CAP = int(os.getenv("AGENT_DAILY_SEARCHES") or (15 if _DEMO else 100))
 # 24-oct: el clasificador del ② ("web_classifier", Nemotron) cuenta igual que los demás, aquí y en el tope del demo entero.
-_MODEL_AGENTS = ("drafter", "reviewer", "note_checker", "personal_judge", "web_classifier")
+_MODEL_AGENTS = ("drafter", "reviewer", "note_checker", "personal_judge", "web_classifier",
+                 "invoice_voice")   # FASE 16 (1-nov): el cobro por voz cuenta en el mismo tope diario
 
 
 class CapReached(RuntimeError):

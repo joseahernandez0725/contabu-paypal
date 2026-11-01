@@ -16,8 +16,9 @@ import { DEMO_MODE, ENTER_CODE_EVENT, openDemoGuide, setTouring, type DemoDoor }
 import { AccessCodeScreen, TourBanner, TourMissing } from "./components/DemoDoors";
 import DemoGuide from "./components/DemoGuide";
 import OwnerApp, { OWNER_PREVIEW_EVENT } from "./components/owner/OwnerApp";
+import { PAYPAL_FROM_KEY } from "./components/owner/ConnectPayPal";
 import { auth } from "./firebase";
-import { getCompanies, getCompany, setActiveCompany, createCompany, getAuditSummary, confirmCheckout, demoDoor } from "./api";
+import { getCompanies, getCompany, setActiveCompany, createCompany, getAuditSummary, confirmCheckout, demoDoor, finishPayPalOAuth, type PayPalOAuthResult } from "./api";
 import type { AuditBoard } from "./api";
 import type { Company } from "./types";
 
@@ -63,6 +64,10 @@ function App() {
   }, []);
   // "Ver como el dueño" (FASE 16): la consola abre el portal del dueño en vista previa, sin cambiar permisos.
   const [ownerPreview, setOwnerPreview] = useState(false);
+  // La VUELTA de "Conectar con PayPal" (FASE 16, 1-nov): PayPal regresa a /paypal-return?code&state; se termina la
+  // conexión, se vuelve a la pantalla de donde salió (portal → Cuentas, consola → Bancos) y se muestra el resultado.
+  const [ppNotice, setPpNotice] = useState<{ tone: "ok" | "warn" | "error"; text: string; from: "owner" | "console" } | null>(null);
+  const [ownerStart, setOwnerStart] = useState<"summary" | "accounts">("summary");   // tras volver de PayPal: Cuentas
   useEffect(() => {
     const open = () => setOwnerPreview(true);
     window.addEventListener(OWNER_PREVIEW_EVENT, open);
@@ -140,6 +145,26 @@ function App() {
       .catch(() => setAuthError(true));
   }, [fbUser, reloadReview, session]);
 
+  useEffect(() => {
+    if (!company || window.location.pathname !== "/paypal-return") return;
+    const q = new URLSearchParams(window.location.search);
+    const code = q.get("code"), state = q.get("state");
+    window.history.replaceState({}, "", "/");
+    let from: "owner" | "console" = company.role === "CLIENT" ? "owner" : "console";
+    try { const f = sessionStorage.getItem(PAYPAL_FROM_KEY); if (f === "owner" || f === "console") from = f; sessionStorage.removeItem(PAYPAL_FROM_KEY); } catch { /* sin almacenamiento */ }
+    if (from === "console") setView("upload"); else setOwnerStart("accounts");
+    if (!code || !state) { setPpNotice({ tone: "warn", text: t("owner.paypal.returnCancelled"), from }); return; }
+    finishPayPalOAuth(code, state)
+      .then((r: PayPalOAuthResult) => {
+        const i = r.imported;
+        setPpNotice({ tone: "ok", from, text: `${t("owner.paypal.connectedNotice", { email: r.email })} ${i ? (i.new === 0 ? t("owner.paypal.upToDate")
+          : t("owner.paypal.imported", { count: i.new, rule: i.by_rule, paypal: i.by_paypal, pending: i.pending })) : ""}` });
+      })
+      .catch((e: Error & { email?: string }) => setPpNotice(e.message === "paypal_other_account"
+        ? { tone: "warn", from, text: t("owner.paypal.err_other_account", { email: e.email }) }
+        : { tone: "error", from, text: `${t(`owner.paypal.err.${["paypal_network", "paypal_not_configured"].includes(e.message) ? e.message : "other"}`)} (${e.message})` }));
+  }, [company, t]);
+
   // Vuelta de Stripe Checkout (?billing=success&session_id=…): confirma el pago y refresca la empresa.
   useEffect(() => {
     if (!company) return;
@@ -193,7 +218,9 @@ function App() {
   if (company && (company.role === "CLIENT" || ownerPreview)) {
     return (
       <OwnerApp key={company.id} company={company} companies={companies} onSwitch={switchCompany}
-                onExitPreview={company.role === "CLIENT" ? undefined : () => setOwnerPreview(false)} />
+                onExitPreview={company.role === "CLIENT" ? undefined : () => setOwnerPreview(false)}
+                notice={ppNotice?.from === "owner" ? { ...ppNotice, onClose: () => setPpNotice(null) } : null}
+                initialView={ownerStart} />
     );
   }
 
@@ -259,6 +286,12 @@ function App() {
           </div>
         ) : (
           <div key={company.id}>
+            {ppNotice?.from === "console" && (
+              <div className={`mb-4 flex items-start justify-between gap-3 text-sm rounded-xl px-4 py-2.5 ${ppNotice.tone === "ok" ? "text-emerald-900 bg-emerald-50" : ppNotice.tone === "warn" ? "text-amber-900 bg-amber-50" : "text-rose-900 bg-rose-50"}`}>
+                <span>{ppNotice.text}</span>
+                <button onClick={() => setPpNotice(null)} className="opacity-60 hover:opacity-100 shrink-0" aria-label="dismiss">✕</button>
+              </div>
+            )}
             {billingNote && (
               <div className="mb-4 flex items-center justify-between gap-3 text-sm text-brand-green bg-brand-green/10 rounded-xl px-4 py-2.5">
                 <span>{billingNote}</span>

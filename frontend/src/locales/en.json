@@ -1641,17 +1641,71 @@
       "excludes": "Excludes transfers between your own accounts, capital contributions and owner draws."
     },
     "accounts": {
-      "title": "Connected accounts",
-      "body": "Your bank and PayPal accounts will appear here, with their last sync date."
+      "meta": "Accounts that feed your books",
+      "count_one": "connected account",
+      "count_other": "connected accounts",
+      "banks": "Banks",
+      "banksTitle": "Bank accounts",
+      "noBanks": "No bank accounts connected",
+      "disconnected": "Disconnected"
     },
     "invoices": {
-      "title": "Invoices",
-      "body": "Issue invoices here and collect payment by card or PayPal. Each payment is recorded in your books automatically."
+      "new": "New invoice",
+      "refresh": "Refresh status",
+      "outstanding": "outstanding",
+      "overdue_one": "overdue",
+      "overdue_other": "overdue",
+      "collected": "collected this year",
+      "connectFirst": "To issue invoices, first connect your PayPal account under Accounts.",
+      "customer": "Customer",
+      "pickCustomer": "Choose a customer",
+      "newCustomer": "New customer",
+      "customerName": "Name or company name",
+      "customerEmail": "Billing email",
+      "saveCustomer": "Save customer",
+      "concept": "Description",
+      "amount": "Amount (USD)",
+      "dueDate": "Due date",
+      "review": "Review",
+      "cancel": "Cancel",
+      "reviewTitle": "Review the invoice before sending it",
+      "total": "Total",
+      "reviewNote": "PayPal will send the invoice to {{email}} with a link to pay by card or PayPal. Once paid, it is recorded in your books automatically.",
+      "send": "Send invoice",
+      "saveDraft": "Save as draft",
+      "edit": "Edit",
+      "none": "You haven't issued any invoices yet.",
+      "due": "due {{date}}",
+      "inBooks": "recorded in your books",
+      "confirmSend": "Send to {{email}}?",
+      "view": "View invoice",
+      "status": {
+        "DRAFT": "Draft",
+        "SENT": "Sent",
+        "PAID": "Paid",
+        "OVERDUE": "Overdue",
+        "PARTIALLY_PAID": "Partially paid",
+        "CANCELLED": "Cancelled",
+        "UNPAID": "Unpaid",
+        "PAYMENT_PENDING": "Payment pending",
+        "SCHEDULED": "Scheduled"
+      },
+      "err": {
+        "load": "Couldn't load the invoices.",
+        "bad_amount": "Check the amount: greater than zero, two decimals at most.",
+        "bad_concept": "Enter the invoice description.",
+        "bad_due_date": "The due date can't be earlier than today.",
+        "paypal_not_connected": "Connect your PayPal account under Accounts before invoicing.",
+        "name_and_email_required": "Enter the customer's name and a valid email (no spaces or special characters).",
+        "other": "PayPal returned an error. Please try again.",
+        "paypal_field": "PayPal rejected a field on the invoice ({{field}}). Check it and try again."
+      }
     },
     "preview": {
       "title": "Preview:",
       "body": "this is the business owner's view. Read-only.",
-      "exit": "Back to the console"
+      "exit": "Back to the console",
+      "disabled": "Read-only in preview"
     },
     "access": {
       "title": "Business owner",
@@ -1704,6 +1758,89 @@
       "showTable": "View as a table",
       "hideTable": "Hide the table",
       "category": "Category"
+    },
+    "paypal": {
+      "connect": "Connect PayPal",
+      "sync": "Sync",
+      "disconnect": "Disconnect",
+      "working": "Working…",
+      "sandbox": "sandbox",
+      "connected": "PayPal connected",
+      "notConnected": "PayPal not connected",
+      "lastSync": "Last synced: {{date}}",
+      "neverSynced": "Not synced yet",
+      "help": "Sales are recorded at the gross amount and the fee separately in Merchant fees; refunds reduce income and transfers to the bank stay off the P&L. The book's rules apply first.",
+      "ownerHelp": "Connect your PayPal account so your sales, fees and refunds reach your books.",
+      "upToDate": "No new transactions.",
+      "imported_one": "1 transaction imported ({{rule}} by rule, {{paypal}} by PayPal type, {{pending}} pending classification).",
+      "imported_other": "{{count}} transactions imported ({{rule}} by rule, {{paypal}} by PayPal type, {{pending}} pending classification).",
+      "err": {
+        "paypal_not_configured": "PayPal isn't configured on this server.",
+        "paypal_auth_failed": "PayPal rejected the credentials.",
+        "paypal_network": "Couldn't reach PayPal. Please try again.",
+        "paypal_not_connected": "PayPal isn't connected.",
+        "other": "PayPal returned an error. Please try again."
+      },
+      "connectWith": "Connect with",
+      "heroTitle": "Connect your PayPal business account",
+      "heroBody": "Your PayPal sales, fees and refunds flow into your books automatically, and you can issue invoices and get paid by card or PayPal.",
+      "connectedNotice": "PayPal connected ({{email}}).",
+      "returnCancelled": "The PayPal connection was cancelled.",
+      "err_other_account": "You signed in to PayPal as {{email}}. This demo can only connect the business's test account; in production, PayPal would ask you to authorize access to your own account.",
+      "openAccount": "Open a business account",
+      "hero": {
+        "needBusiness": "To issue invoices you need a PayPal business account.",
+        "noCost": "Opening one is free: PayPal only charges a fee on each payment you receive.",
+        "cards": "Your customers pay by credit or debit card, even without a PayPal account.",
+        "convert": "Already have a personal account? You can convert it to a business account and keep your history."
+      },
+      "convertLink": "Convert my personal account"
+    },
+    "transfers": {
+      "title": "Transfers to bank accounts",
+      "summary": "{{matched}} matched · {{proposals}} to confirm · {{unmatched}} without deposit",
+      "rematch": "Find deposits",
+      "help": "Each PayPal withdrawal is matched to its bank deposit (same amount, up to {{days}} days later) and both stay off the P&L, so the sale isn't recorded twice.",
+      "toConfirm": "To confirm:",
+      "withdrawal": "{{amount}} withdrawal on {{date}}",
+      "confirm": "Confirm",
+      "none": "None of these",
+      "auto": "matched automatically",
+      "confirmed": "confirmed",
+      "unmatched_one": "1 withdrawal with no deposit recorded at the bank:",
+      "unmatched_other": "{{count}} withdrawals with no deposit recorded at the bank:",
+      "monthClosed": "That deposit is in a closed period: reopen it in Settings to match it.",
+      "error": "Couldn't update the transfer. Please try again."
+    },
+    "voice": {
+      "title": "Dictate the invoice",
+      "subtitle": "Say who, how much, what for and when it's due.",
+      "mic": "Dictate with the microphone",
+      "placeholder": "E.g.: Invoice Acme 1,250 dollars for the air conditioning installation, due November 20.",
+      "listening": "Listening… speak naturally; you can edit the text before using it.",
+      "noMic": "Your browser has no voice dictation: use your keyboard's microphone in this same field.",
+      "fill": "Fill in the form",
+      "clear": "Clear",
+      "privacy": "Processed by AI (NVIDIA Nemotron) without your customer's name. Nothing is sent until you confirm.",
+      "filled": "Form filled from your dictation. Review it before continuing.",
+      "pickOne": "The dictation matches more than one customer: pick one in the list (marked ★) and fill again.",
+      "noCustomer": "I didn't find that customer in your list: pick or add them, then fill the form again.",
+      "micError": "Couldn't use the microphone. Check the browser permission or type the text.",
+      "warn": {
+        "amount_missing": "I didn't hear the amount: enter it.",
+        "amount_invalid": "The amount isn't valid: check it.",
+        "due_default": "No due date: 15 days is proposed.",
+        "due_past": "The date you said has already passed.",
+        "due_invalid": "I didn't understand the date.",
+        "concept_missing": "I didn't hear the description: enter it.",
+        "unreadable": "I couldn't understand the dictation."
+      },
+      "err": {
+        "ai_cap_reached": "The daily AI limit was reached. Fill in the form manually.",
+        "ai_unavailable": "AI isn't available right now. Fill in the form manually.",
+        "text_required": "Type or dictate the text first.",
+        "other": "Couldn't process the dictation. Try again or fill in the form manually."
+      }
     }
   }
 }

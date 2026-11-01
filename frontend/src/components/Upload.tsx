@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { uploadCsv, setTransactionsAccount, type BankConnection, type UploadResult } from "../api";
 import { SyncSummary, useBanks } from "./BankConnections";
 import { LiveOnly } from "./DemoDoors";   // visita guiada del demo: vincular un banco, solo en vivo (Firm, 23-oct)
+import PayPalCard from "./owner/PayPalCard";   // FASE 16: PayPal, una cuenta más del libro (junto a los bancos)
 import {
   BTN_GHOST, BTN_PRIMARY, BTN_SMALL_PRIMARY, DOT, DetailHeader, DetailSection, EmptyRow, ListCard, ListDetail, ListRow,
   PageHeader, Stat, TONE, agoText, secsSince,
@@ -104,6 +105,9 @@ export default function Upload({ onDone }: { onDone: () => void }) {
         <Stat value={banks.loaded ? accounts : undefined} label={t("page.banks.accounts", { count: accounts })} />
         {down > 0 && <Stat value={down} label={t("page.banks.down", { count: down })} tone={TONE.problem} />}
       </PageHeader>
+
+      {/* PayPal del libro (FASE 16, tarjeta de la F16): ARRIBA, a la vista (Jose, 1-nov: clave en el demo). */}
+      <LiveOnly><PayPalCard canEdit /></LiveOnly>
 
       {banks.last && <SyncSummary s={banks.last} />}
       {banks.error && <div className="alert alert-error text-sm">{banks.error}</div>}

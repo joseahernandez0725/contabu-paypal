@@ -95,6 +95,27 @@ CLIENT_ALLOWED: set[tuple[str, str]] = {
     ("POST", "/api/companies/{company_id}/transactions/upload"),   # "subir un extracto"
     ("GET", "/api/hello"),                                         # público, sin identidad
     ("GET", "/api/owner/companies/{company_id}"),                  # portada del portal: negocio, quién lo lleva, meses cerrados
+    ("GET", "/api/owner/companies/{company_id}/accounts"),         # Cuentas: sus bancos y su PayPal (nombre, últimos 4, estado)
+    ("POST", "/api/companies/{company_id}/paypal/connect"),        # conectar SU PayPal (Jose, 31-oct: dueño y bookkeeper)
+    ("POST", "/api/companies/{company_id}/paypal/authorize"),      # el enlace para iniciar sesión en PayPal (1-nov)
+    ("POST", "/api/paypal/oauth"),                                 # la vuelta de PayPal: el `state` firmado dice el libro
+    # Cobros (Paso 5): el dueño factura a SUS clientes. Crear y enviar son SOLO suyas (OWNER_ONLY, abajo).
+    ("GET", "/api/owner/companies/{company_id}/customers"),        # su lista de clientes (para facturar y dictar)
+    ("POST", "/api/owner/companies/{company_id}/customers"),       # agregar un cliente
+    ("GET", "/api/owner/companies/{company_id}/invoices"),         # sus facturas y sus cifras
+    ("POST", "/api/owner/companies/{company_id}/invoices"),        # crear un BORRADOR (no envía nada)
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/send"),  # enviarla, tras confirmar en pantalla
+    ("POST", "/api/owner/companies/{company_id}/invoices/refresh"),  # preguntar a PayPal si ya se pagó
+    ("POST", "/api/owner/companies/{company_id}/invoices/voice"),  # dictado → el formulario (no envía nada)
+}
+
+# Rutas SOLO DEL DUEÑO: el bookkeeper (y su vista previa) NO puede cobrar a nombre del dueño (FASE 16, 31-oct). La
+# segunda pasada exige que al bookkeeper le respondan 403 — al revés que en el resto de las rutas de su libro.
+OWNER_ONLY: set[tuple[str, str]] = {
+    ("POST", "/api/owner/companies/{company_id}/customers"),
+    ("POST", "/api/owner/companies/{company_id}/invoices"),
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/send"),
+    ("POST", "/api/owner/companies/{company_id}/invoices/voice"),
 }
 
 # Rutas que NO se prueban porque no pertenecen al modelo de acceso por libro.
@@ -155,6 +176,16 @@ BODIES: dict[tuple[str, str], dict] = {
     ("POST", "/api/companies/{company_id}/agents/verify-merchant"): {"transaction_id": 999999},
     ("POST", "/api/companies/{company_id}/audit/findings/{finding_id}/resolve"): {"status": "ok"},
     ("POST", "/api/companies/{company_id}/agents/dismissals"): {"keyword": "PERMCHECK"},
+    # Cobros (FASE 16 Paso 5). Cliente 999999: para el dueño, un 404 (no es un 403); para el bookkeeper, 403.
+    ("POST", "/api/owner/companies/{company_id}/customers"): {"name": "Permcheck Customer", "email": "pc@test.local"},
+    ("POST", "/api/owner/companies/{company_id}/invoices"): {"customer_id": 999999, "concept": "Permcheck", "amount": "10.00",
+                                                            "due_date": "2099-01-01"},
+    # Cobro por voz (1-nov): sin cliente reconocido no llama a la IA (responde que elija el cliente).
+    ("POST", "/api/owner/companies/{company_id}/invoices/voice"): {"text": "factura de prueba por 10 dólares"},
+    # Log in with PayPal (1-nov): un `state` inventado → 400 (la firma no cuadra), nunca un 2xx.
+    ("POST", "/api/paypal/oauth"): {"code": "permcheck", "state": "permcheck.forged"},
+    # PayPal (FASE 16 Paso 4): confirmar el depósito de un retiro es del bookkeeper. Retiro 999999: un 404 también rechaza.
+    ("POST", "/api/companies/{company_id}/paypal/transfers/{withdrawal_id}/confirm"): {"bank_tx_id": 999999},
     # El dueño en la consola (FASE 16, 31-oct): invitarlo es del bookkeeper, nunca del propio cliente.
     ("POST", "/api/companies/{company_id}/owner-access"): {"email": "permcheck-owner2@test.local"},
     # Las dos puertas del demo (Firm, 23-oct): fuera del demo, 404.
@@ -664,7 +695,7 @@ def check_demo_doors(client: TestClient) -> list[str]:
     return fails
 
 
-OWNER_KEYS = {"company", "managed_by", "brand_color", "brand_logo_url", "preview", "closed_months", "years"}
+OWNER_KEYS = {"company", "managed_by", "brand_color", "brand_logo_url", "preview", "closed_months", "years", "paypal"}
 
 
 def check_owner_portal(client: TestClient) -> list[str]:
@@ -916,6 +947,11 @@ def main() -> int:
                 if key in QUERY:
                     kwargs["params"] = QUERY[key]
                 r = client.request(method, url, **kwargs)
+                if key in OWNER_ONLY:
+                    if r.status_code != 403:
+                        blocked.append(f"{method} {tmpl} → {r.status_code}: es SOLO del dueño y el bookkeeper pudo")
+                        print(f"  🔴 {method:6} {tmpl}  → {r.status_code} (¡solo del dueño!)")
+                    continue
                 if r.status_code == 403:
                     blocked.append(f"{method} {tmpl} → 403: {r.json().get('detail')}")
                     print(f"  ❌ {method:6} {tmpl}  → 403 (¡el bookkeeper quedó bloqueado!)")

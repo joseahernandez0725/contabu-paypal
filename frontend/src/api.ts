@@ -1327,6 +1327,7 @@ export interface OwnerHome {
   preview: boolean;               // quien mira NO es el dueño (el bookkeeper): las acciones van apagadas
   closed_months: OwnerMonth[];    // la FOTO de cada mes cerrado, el más reciente primero (Paso 2)
   years: OwnerYear[];             // lo mismo ACUMULADO por año (SQL sobre las fotos), el más reciente primero
+  paypal: { connected: boolean };
 }
 
 /** El año del dueño: totales, acumulado mes a mes y por categoría — todo calculado por SQL en el backend. */
@@ -1410,3 +1411,125 @@ export async function setMonthClosed(month: string, close: boolean): Promise<voi
   });
   if (!res.ok) throw new Error(close ? "close failed" : "reopen failed");
 }
+
+// --- PayPal, una cuenta más del libro (FASE 16 Paso 3) ------------------------------------------------------------
+export interface PayPalStatus {
+  connected: boolean;
+  available: boolean;             // hay llaves de sandbox en el servidor (el demo conecta UNA cuenta de prueba)
+  environment: string;
+  mode?: string;
+  status?: string;                // active | error
+  last_error?: string | null;
+  last_synced_at?: string | null;
+  imported?: { new: number; by_rule: number; by_paypal: number; by_transfer: number; pending: number; known: number };
+}
+
+async function paypalCall(path: string, method = "GET"): Promise<PayPalStatus> {
+  const res = await fetch(`${API}/api/companies/${cid()}/paypal${path}`, { method, headers: await authHeaders() });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail?.code ?? `paypal_http_${res.status}`);
+  }
+  return res.json();
+}
+export const getPayPal = () => paypalCall("");
+export const connectPayPal = () => paypalCall("/connect", "POST");
+export const syncPayPal = () => paypalCall("/sync", "POST");
+export const disconnectPayPal = () => paypalCall("", "DELETE");
+
+/** La ventana Cuentas del dueño: sus bancos (Plaid) y su PayPal. Sin tokens ni transacciones. */
+export interface OwnerAccounts {
+  banks: { institution: string | null; status: string; last_synced_at: string | null; accounts: { name: string | null; mask: string | null }[] }[];
+  paypal: PayPalStatus;
+}
+export async function getOwnerAccounts(): Promise<OwnerAccounts> {
+  const res = await fetch(`${API}/api/owner/companies/${cid()}/accounts`, { headers: await authHeaders() });
+  if (!res.ok) throw new Error("owner accounts failed");
+  return res.json();
+}
+
+// --- Paso 4: el retiro de PayPal ↔ su depósito en el banco ----------------------------------------------------------
+export interface BriefTx { id: number; date: string; description: string; amount: string; bank_account: string | null; account_type: string | null; category: string | null }
+export interface PayPalTransfers {
+  matched: { withdrawal: BriefTx; deposit: BriefTx | null; status: "auto" | "confirmed" }[];
+  proposals: { withdrawal: BriefTx; candidates: BriefTx[] }[];
+  unmatched: { withdrawal: BriefTx }[];
+  window_days: number;
+}
+async function transfersCall(path: string, method = "GET", body?: unknown): Promise<PayPalTransfers> {
+  const res = await fetch(`${API}/api/companies/${cid()}/paypal/transfers${path}`, {
+    method, headers: { ...(await authHeaders()), ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}));
+    throw new Error(b?.detail === "month_closed" ? `month_closed:${b.month}` : `transfers_http_${res.status}`);
+  }
+  return res.json();
+}
+export const getPayPalTransfers = () => transfersCall("");
+export const matchPayPalTransfers = () => transfersCall("/match", "POST");
+export const confirmPayPalTransfer = (withdrawalId: number, bankTxId: number) =>
+  transfersCall(`/${withdrawalId}/confirm`, "POST", { bank_tx_id: bankTxId });
+export const rejectPayPalTransfer = (withdrawalId: number) => transfersCall(`/${withdrawalId}/reject`, "POST");
+
+// --- Cobros: las facturas del dueño (FASE 16 Paso 5) -----------------------------------------------------------------
+export interface Customer { id: number; name: string; email: string }
+export interface OwnerInvoice {
+  id: number; number: string | null; status: string; overdue: boolean; customer: Customer | null; concept: string;
+  amount: string; currency: string; due_date: string; recipient_view_url: string | null; sent_at: string | null;
+  paid_at: string | null; in_books: boolean;
+}
+export interface InvoicesView {
+  invoices: OwnerInvoice[];
+  summary: { outstanding: string; overdue: number; collected_this_year: string };   // calculadas por SQL
+  paypal_connected: boolean;
+}
+async function ownerCall<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  const res = await fetch(`${API}/api/owner/companies/${cid()}${path}`, {
+    method, headers: { ...(await authHeaders()), ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}));
+    throw Object.assign(new Error(typeof b?.detail === "string" ? b.detail : b?.detail?.code ?? `http_${res.status}`),
+                        { field: b?.detail?.field ?? null });   // el campo que PayPal rechazó, si lo dijo
+  }
+  return res.json();
+}
+export const getCustomers = () => ownerCall<Customer[]>("/customers");
+export const addCustomer = (name: string, email: string) => ownerCall<Customer>("/customers", "POST", { name, email });
+export const getInvoices = () => ownerCall<InvoicesView>("/invoices");
+export const createInvoice = (b: { customer_id: number; concept: string; amount: string; due_date: string }) =>
+  ownerCall<InvoicesView>("/invoices", "POST", b);
+export const sendInvoice = (id: number) => ownerCall<InvoicesView>(`/invoices/${id}/send`, "POST");
+export const refreshInvoices = () => ownerCall<InvoicesView & { changed: number }>("/invoices/refresh", "POST");
+
+// --- "Conectar con PayPal": Log in with PayPal (FASE 16, 1-nov) ------------------------------------------------------
+export async function authorizePayPal(companyId?: number): Promise<string> {
+  const res = await fetch(`${API}/api/companies/${companyId ?? cid()}/paypal/authorize`, { method: "POST", headers: await authHeaders() });
+  if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.detail?.code ?? `http_${res.status}`); }
+  return (await res.json()).url;
+}
+export type PayPalOAuthResult = PayPalStatus & { email?: string; company_id?: number };
+/** La vuelta de PayPal. Lanza un Error con `code` y, si la cuenta no es la del demo, con `email` y `company_id`. */
+export async function finishPayPalOAuth(code: string, state: string): Promise<PayPalOAuthResult> {
+  const res = await fetch(`${API}/api/paypal/oauth`, {
+    method: "POST", headers: { ...(await authHeaders()), "Content-Type": "application/json" }, body: JSON.stringify({ code, state }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(body?.detail?.code ?? `http_${res.status}`), body?.detail ?? {});
+  return body;
+}
+
+// --- Cobro por voz (FASE 16 Paso 6): del dictado al formulario (no envía nada) ---------------------------------------
+export interface VoiceResult {
+  needs_customer: boolean;
+  candidates: Customer[];         // si el dictado nombra a más de un cliente guardado, o a ninguno (vacío)
+  customer: Customer | null;
+  fields: { amount: string | null; due_date: string | null; concept: string | null } | null;
+  warnings: string[];             // amount_missing · amount_invalid · due_default · due_past · due_invalid · concept_missing
+  sent_to_ai?: string;            // lo que vio la IA: el dictado con el cliente cambiado por [CUSTOMER]
+}
+export const voiceInvoice = (text: string, lang: string, customerId?: number) =>
+  ownerCall<VoiceResult>("/invoices/voice", "POST", { text, lang, ...(customerId ? { customer_id: customerId } : {}) });

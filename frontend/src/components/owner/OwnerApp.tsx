@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getOwnerHome, type OwnerHome } from "../../api";
 import OwnerYearView from "./OwnerYear";
+import OwnerAccounts from "./OwnerAccounts";
+import OwnerInvoices from "./OwnerInvoices";
+import ConnectPayPal from "./ConnectPayPal";
 import type { Company } from "../../types";
 import OwnerSidebar, { type OwnerView } from "./OwnerSidebar";
 import { DetailCard, DetailEmpty, DetailHeader, PageHeader, Stat } from "../PageKit";
@@ -26,14 +29,17 @@ export function openOwnerPreview() {
   window.dispatchEvent(new Event(OWNER_PREVIEW_EVENT));
 }
 
-export default function OwnerApp({ company, companies, onSwitch, onExitPreview }: {
+export default function OwnerApp({ company, companies, onSwitch, onExitPreview, notice, initialView = "summary" }: {
   company: Company;
   companies: Company[];
   onSwitch: (c: Company) => void;
   onExitPreview?: () => void;   // solo en la vista previa del bookkeeper: volver a la consola
+  notice?: { tone: "ok" | "warn" | "error"; text: string; onClose: () => void } | null;   // la vuelta de PayPal
+  initialView?: OwnerView;
 }) {
   const { t } = useTranslation();
-  const [view, setView] = useState<OwnerView>("summary");
+  const [view, setView] = useState<OwnerView>(initialView);
+  useEffect(() => { setView(initialView); }, [initialView]);
   const [menuOpen, setMenuOpen] = useState(false); // el cajón de la barra lateral (solo celular)
   const [home, setHome] = useState<OwnerHome | null>(null);
   const [error, setError] = useState(false);
@@ -41,7 +47,7 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview }
   useEffect(() => {
     setHome(null); setError(false);
     getOwnerHome().then(setHome).catch(() => setError(true));
-  }, [company.id]);
+  }, [company.id, notice?.text]);   // al volver de PayPal (aviso nuevo) se vuelve a pedir: la tarjeta de conectar se va
 
   const managedBy = home?.managed_by ?? null;
 
@@ -75,16 +81,25 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview }
         </header>
 
         <main className="flex-1 w-full px-3 sm:px-4 py-3 space-y-3">
+          {notice && (
+            <div className={`flex items-start gap-3 rounded-xl px-3 py-2.5 text-sm ${notice.tone === "ok" ? "bg-emerald-50 text-emerald-900" : notice.tone === "warn" ? "bg-amber-50 text-amber-900" : "bg-rose-50 text-rose-900"}`}>
+              <span className="flex-1">{notice.text}</span>
+              <button onClick={notice.onClose} aria-label="dismiss" className="opacity-60 hover:opacity-100">✕</button>
+            </div>
+          )}
           {error ? (
             <p className="text-sm text-rose-600">{t("owner.error")}</p>
           ) : !home ? (
             <div className="flex justify-center py-16"><span className="loading loading-spinner loading-lg text-brand-green" /></div>
           ) : view === "summary" ? (
-            <Summary home={home} />
+            <>
+              {!home.paypal.connected && <PayPalHero preview={home.preview} />}
+              <Summary home={home} />
+            </>
           ) : view === "accounts" ? (
-            <Placeholder kicker={t("owner.nav.accounts")} title={t("owner.accounts.title")} body={t("owner.accounts.body")} />
+            <OwnerAccounts preview={home.preview} />
           ) : (
-            <Placeholder kicker={t("owner.nav.invoices")} title={t("owner.invoices.title")} body={t("owner.invoices.body")} />
+            <OwnerInvoices preview={home.preview} />
           )}
         </main>
       </div>
@@ -114,11 +129,31 @@ function Summary({ home }: { home: OwnerHome }) {
   return <OwnerYearView years={home.years} closed={home.closed_months} />;
 }
 
-function Placeholder({ kicker, title, body }: { kicker: string; title: string; body: string }) {
+/** La invitación GRANDE a conectar PayPal, arriba del Resumen, mientras no esté conectado (Jose, 1-nov). */
+function PayPalHero({ preview }: { preview: boolean }) {
+  const { t } = useTranslation();
   return (
-    <DetailCard>
-      <DetailHeader kicker={kicker} title={title} />
-      <div className="mt-2"><DetailEmpty text={body} /></div>
-    </DetailCard>
+    <div className="rounded-xl border border-[#009CDE]/30 bg-gradient-to-r from-[#009CDE]/10 to-white p-4 sm:p-5 flex flex-wrap items-center gap-4">
+      <div className="min-w-0 flex-1">
+        <h3 className="text-base font-semibold text-slate-900">{t("owner.paypal.heroTitle")}</h3>
+        <p className="text-sm text-slate-600 mt-1">{t("owner.paypal.heroBody")}</p>
+        {/* Jose, 1-nov: claro y corto — se necesita cuenta de NEGOCIOS, abrirla no cuesta, se cobra con tarjeta, y una
+            personal se convierte. Fuentes oficiales: paypal.com/us/business/paypal-business-fees y help318. */}
+        <ul className="mt-3 space-y-1 text-sm text-slate-700">
+          {(["needBusiness", "noCost", "cards", "convert"] as const).map((k) => (
+            <li key={k} className="flex gap-2"><span className="text-[#0070BA]">✓</span><span>{t(`owner.paypal.hero.${k}`)}</span></li>
+          ))}
+        </ul>
+        <p className="mt-2 text-xs flex flex-wrap gap-x-4 gap-y-1">
+          <a href="https://www.paypal.com/us/business/open-business-account" target="_blank" rel="noreferrer" className="font-medium text-[#0070BA] hover:underline">
+            {t("owner.paypal.openAccount")}
+          </a>
+          <a href="https://www.paypal.com/us/cshelp/article/what-is-the-difference-between-personal-and-business-accounts%E2%80%AF-help318" target="_blank" rel="noreferrer" className="font-medium text-[#0070BA] hover:underline">
+            {t("owner.paypal.convertLink")}
+          </a>
+        </p>
+      </div>
+      <ConnectPayPal from="owner" disabled={preview} title={preview ? t("owner.preview.disabled") : undefined} />
+    </div>
   );
 }

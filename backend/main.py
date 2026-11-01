@@ -2909,8 +2909,12 @@ def transaction_rule_trace(company_id: int, transaction_id: int, user: User = De
 # ⚠️ Rutas PLANAS, no `include_router`: desde FastAPI 0.137 un router incluido queda como UNA entrada
 # perezosa en `app.routes`, sin `path`, y `check_permissions.py` (que recorre `app.routes`) no lo vería.
 import owner_portal  # noqa: E402
+import paypal  # noqa: E402  (PayPal, una cuenta más del libro: Paso 3)
+import invoices  # noqa: E402  (Cobros: las facturas del dueño, Paso 5)
+import voice_invoice  # noqa: E402  (cobro por voz, Paso 6)
 
-for _r in [*owner_portal.router.routes, *month_close.router.routes]:
+for _r in [*owner_portal.router.routes, *month_close.router.routes, *paypal.router.routes, *invoices.router.routes,
+           *voice_invoice.router.routes]:
     app.add_api_route(_r.path, _r.endpoint, methods=sorted(_r.methods), name=_r.name)
 # Un cambio a un movimiento de un mes CERRADO, venga de donde venga → 409 {"detail": "month_closed", "month"}.
 app.add_exception_handler(month_close.MonthClosedError, month_close.on_month_closed)
