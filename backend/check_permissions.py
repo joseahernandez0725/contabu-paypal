@@ -96,8 +96,14 @@ CLIENT_ALLOWED: set[tuple[str, str]] = {
     ("GET", "/api/hello"),                                         # público, sin identidad
     ("GET", "/api/owner/companies/{company_id}"),                  # portada del portal: negocio, quién lo lleva, meses cerrados
     ("GET", "/api/owner/companies/{company_id}/accounts"),         # Cuentas: sus bancos y su PayPal (nombre, últimos 4, estado)
-    ("POST", "/api/companies/{company_id}/paypal/connect"),        # conectar SU PayPal (Jose, 31-oct: dueño y bookkeeper)
     ("POST", "/api/companies/{company_id}/paypal/authorize"),      # el enlace para iniciar sesión en PayPal (1-nov)
+    # Vincular SU banco desde el portal (Jose, 1-nov): sus credenciales en Plaid, como subir su extracto. Reparar,
+    # sincronizar y quitar un banco siguen siendo del bookkeeper.
+    ("POST", "/api/companies/{company_id}/bank-connections/link-token"),
+    ("POST", "/api/companies/{company_id}/bank-connections/check"),
+    ("POST", "/api/companies/{company_id}/bank-connections"),
+    # Tras subir SU estado de cuenta: ponerle la cuenta a lo que subió. Solo filas SIN cuenta (check_owner_portal).
+    ("POST", "/api/companies/{company_id}/transactions/set-account"),
     ("POST", "/api/paypal/oauth"),                                 # la vuelta de PayPal: el `state` firmado dice el libro
     # Cobros (Paso 5): el dueño factura a SUS clientes. Crear y enviar son SOLO suyas (OWNER_ONLY, abajo).
     ("GET", "/api/owner/companies/{company_id}/customers"),        # su lista de clientes (para facturar y dictar)
@@ -734,6 +740,16 @@ def check_owner_portal(client: TestClient) -> list[str]:
         r = client.get(f"/api/owner/companies/{company_id}", headers=bk)
         expect("el bookkeeper ve la portada en vista previa",
                r.status_code == 200 and r.json().get("preview") is True, r.status_code)
+        # El dueño pone la cuenta SOLO a filas sin cuenta: nunca cambia la de una que ya la tiene.
+        with Session(engine) as s:
+            had = Transaction(company_id=company_id, date=date(2026, 6, 2), description="HAS ACCOUNT",
+                              amount=Decimal("5.00"), is_inflow=False, bank_account="••1111")
+            s.add(had); s.commit(); s.refresh(had); had_id = had.id
+        client.post(f"/api/companies/{company_id}/transactions/set-account", headers=cl,
+                    json={"transaction_ids": [had_id], "account": "9999"})
+        with Session(engine) as s:
+            kept = s.get(Transaction, had_id).bank_account
+        expect("el dueño no cambia la cuenta de una fila que ya la tiene", kept == "••1111", kept)
         r = client.post(f"/api/companies/{company_id}/owner-access", headers=bk,
                         json={"email": "permcheck-bk@test.local"})
         expect("invitar como dueño a quien creó el libro → 409", r.status_code == 409, r.status_code)

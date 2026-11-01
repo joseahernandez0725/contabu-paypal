@@ -513,18 +513,21 @@ def set_transactions_account(
     session: Session = Depends(get_session),
 ):
     """Asigna la cuenta bancaria (que indicó el usuario) a varias transacciones de la empresa.
-    Se guarda enmascarada a los últimos 4 dígitos. Útil cuando la IA no la detectó del archivo."""
-    owned_company(company_id, user, session, write=True)
+    Se guarda enmascarada a los últimos 4 dígitos. Útil cuando la IA no la detectó del archivo.
+    FASE 16 (1-nov): el DUEÑO también, tras subir su estado de cuenta desde el portal — pero SOLO llena la cuenta de
+    filas que no tienen ninguna (las que acaba de subir); nunca cambia la de una fila que ya la tiene."""
+    company = client_writable_company(company_id, user, session)
+    owner_only_fill = effective_role(company, user, session) == Role.CLIENT
     masked = mask_account(payload.account)
     if masked is None:
         raise HTTPException(status_code=422, detail="account must contain at least 4 digits")
     if not payload.transaction_ids:
         return {"updated": 0, "bank_account": masked}
-    rows = session.exec(
-        select(Transaction)
-        .where(Transaction.company_id == company_id)
-        .where(Transaction.id.in_(payload.transaction_ids))
-    ).all()
+    q = (select(Transaction).where(Transaction.company_id == company_id)
+         .where(Transaction.id.in_(payload.transaction_ids)))
+    if owner_only_fill:
+        q = q.where(Transaction.bank_account.is_(None))
+    rows = session.exec(q).all()
     for tx in rows:
         tx.bank_account = masked
         session.add(tx)
@@ -635,8 +638,12 @@ def create_bank_link_token(
     user: User = Depends(current_user),
     session: Session = Depends(get_session),
 ):
-    """Un link_token de un solo uso para abrir Plaid Link (nuevo banco, o reparar uno cortado)."""
-    owned_company(company_id, user, session, write=True)
+    """Un link_token de un solo uso para abrir Plaid Link (nuevo banco, o reparar uno cortado).
+    FASE 16 (1-nov, Jose): el DUEÑO también vincula su banco desde su portal (es su cuenta y sus credenciales, como
+    subir su extracto); reparar una conexión sigue siendo del bookkeeper."""
+    company = client_writable_company(company_id, user, session)
+    if payload.connection_id is not None and effective_role(company, user, session) == Role.CLIENT:
+        raise HTTPException(status_code=403, detail="not allowed for client accounts")
     access_token = None
     if payload.connection_id is not None:
         conn = _owned_bank_connection(company_id, payload.connection_id, session)
@@ -658,8 +665,9 @@ def check_bank_connection(
     session: Session = Depends(get_session),
 ):
     """ANTES de canjear el public_token (14-oct): ¿este banco ya está vinculado, aquí o en otro libro de la
-    oficina? La pantalla lo pregunta en el `onSuccess` de Link y, si lo está, NO canjea. No toca nada."""
-    company = owned_company(company_id, user, session, write=True)
+    oficina? La pantalla lo pregunta en el `onSuccess` de Link y, si lo está, NO canjea. No toca nada.
+    FASE 16: también el dueño (vincula su banco desde su portal)."""
+    company = client_writable_company(company_id, user, session)
     return {"duplicate": _bank_duplicate(session, company, payload)}
 
 
@@ -671,8 +679,9 @@ def create_bank_connection(
     session: Session = Depends(get_session),
 ):
     """Canjea el public_token que devolvió Plaid Link, guarda la conexión (token cifrado) y hace la
-    primera sincronización. Si ese Item ya estaba en el libro, actualiza su token en vez de duplicarlo."""
-    company = owned_company(company_id, user, session, write=True)
+    primera sincronización. Si ese Item ya estaba en el libro, actualiza su token en vez de duplicarlo.
+    FASE 16: también el dueño (vincula su banco desde su portal); sus movimientos pasan por las reglas como siempre."""
+    company = client_writable_company(company_id, user, session)
     public_token = (payload.public_token or "").strip()
     if not public_token:
         raise HTTPException(status_code=422, detail="public_token es obligatorio")

@@ -4,7 +4,7 @@ import { addCustomer, createInvoice, getCustomers, getInvoices, money, refreshIn
          type Customer, type InvoicesView, type OwnerInvoice } from "../../api";
 import ConnectPayPal from "./ConnectPayPal";
 import VoiceDictation from "./VoiceDictation";
-import { BTN_PRIMARY, BTN_SECONDARY, BTN_SMALL_PRIMARY, Badge, DetailCard, DetailHeader, PageHeader, Stat, TONE } from "../PageKit";
+import { BTN_PRIMARY, BTN_SECONDARY, BTN_SMALL_PRIMARY, Badge, DetailCard, DetailHeader } from "../PageKit";
 
 // COBROS, en el portal del dueño (FASE 16 Paso 5). El dueño factura a un cliente de su lista, REVISA la factura y la
 // envía con PayPal; el cliente paga en el enlace de PayPal y la venta entra sola al libro (`backend/invoices.py`).
@@ -13,7 +13,15 @@ import { BTN_PRIMARY, BTN_SECONDARY, BTN_SMALL_PRIMARY, Badge, DetailCard, Detai
 // pero las acciones quedan apagadas (el backend además responde 403).
 
 type Draft = { customer_id: number | ""; concept: string; amount: string; due_date: string };
-const in15 = () => new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10);
+// Fechas en la hora LOCAL del dueño (1-nov: con toISOString salían en UTC y de noche se corrían un día).
+const localISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const in15 = () => { const d = new Date(); d.setDate(d.getDate() + 15); return localISO(d); };
+
+// Franja de color por estado (borde izquierdo): se lee la lista de un vistazo, sin perder sobriedad.
+const ACCENT: Record<string, string> = {
+  DRAFT: "border-s-slate-300", SENT: "border-s-sky-500", PAID: "border-s-emerald-500", OVERDUE: "border-s-rose-500",
+  PARTIALLY_PAID: "border-s-amber-500", CANCELLED: "border-s-slate-200",
+};
 
 const STATUS_CLS: Record<string, string> = {
   DRAFT: "bg-slate-50 text-slate-600 ring-slate-200", SENT: "bg-sky-50 text-sky-700 ring-sky-200",
@@ -21,7 +29,7 @@ const STATUS_CLS: Record<string, string> = {
   PARTIALLY_PAID: "bg-amber-50 text-amber-700 ring-amber-200", CANCELLED: "bg-slate-50 text-slate-500 ring-slate-200",
 };
 
-export default function OwnerInvoices({ preview }: { preview: boolean }) {
+export default function OwnerInvoices({ preview, businessName, autoOpen = 0 }: { preview: boolean; businessName: string; autoOpen?: number }) {
   const { t, i18n } = useTranslation();
   const lang = i18n.language || "en";
   const [v, setV] = useState<InvoicesView | null>(null);
@@ -32,6 +40,7 @@ export default function OwnerInvoices({ preview }: { preview: boolean }) {
   const [newCust, setNewCust] = useState<{ name: string; email: string } | null>(null);
   const [confirmSend, setConfirmSend] = useState<number | null>(null);
   const [suggested, setSuggested] = useState<number[]>([]);   // clientes que nombró el dictado (si dudó entre varios)
+  useEffect(() => { if (autoOpen > 0 && !preview) setOpen(true); }, [autoOpen, preview]);   // "+ Nueva factura" del Resumen
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -71,19 +80,24 @@ export default function OwnerInvoices({ preview }: { preview: boolean }) {
 
   return (
     <div className="space-y-3">
-      <PageHeader
-        primary={!open && (
+      {/* Las cifras de Cobros (calculadas por SQL en el backend) como tarjetas, y las acciones a la vista. */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Kpi label={t("owner.invoices.outstandingTitle")} value={money(Number(v.summary.outstanding))} accent="border-t-sky-500" />
+        <Kpi label={t("owner.invoices.overdueTitle")} value={String(v.summary.overdue)} accent={v.summary.overdue ? "border-t-rose-500" : "border-t-slate-300"}
+             tone={v.summary.overdue ? "text-rose-700" : "text-slate-900"} />
+        <Kpi label={t("owner.invoices.collectedTitle")} value={money(Number(v.summary.collected_this_year))} accent="border-t-emerald-500" tone="text-emerald-700" />
+      </div>
+      {!open && (
+        <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => setOpen(true)} disabled={blocked} className={BTN_PRIMARY} title={preview ? t("owner.preview.disabled") : undefined}>
-            {t("owner.invoices.new")}
+            + {t("owner.invoices.new")}
           </button>
-        )}
-        more={preview ? [] : [{ label: t("owner.invoices.refresh"), onClick: () => void run(refreshInvoices, setV), disabled: busy }]}
-        moreLabel={t("page.more")}
-      >
-        <Stat value={money(Number(v.summary.outstanding))} label={t("owner.invoices.outstanding")} />
-        <Stat value={v.summary.overdue} label={t("owner.invoices.overdue", { count: v.summary.overdue })} tone={v.summary.overdue ? TONE.problem : TONE.neutral} />
-        <Stat value={money(Number(v.summary.collected_this_year))} label={t("owner.invoices.collected")} />
-      </PageHeader>
+          {!preview && (
+            <button onClick={() => void run(refreshInvoices, setV)} disabled={busy} className={BTN_SECONDARY}>{t("owner.invoices.refresh")}</button>
+          )}
+          <span className="text-xs text-slate-500">{t("owner.invoices.howItWorks")}</span>
+        </div>
+      )}
 
       {!v.paypal_connected && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#009CDE]/30 bg-[#009CDE]/5 px-3 py-2.5">
@@ -97,7 +111,7 @@ export default function OwnerInvoices({ preview }: { preview: boolean }) {
         <DetailCard>
           <DetailHeader kicker={t("owner.nav.invoices")} title={review ? t("owner.invoices.reviewTitle") : t("owner.invoices.new")} />
           {!review ? (
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 [&>*]:min-w-0">
               {/* Paso 6: dictar llena ESTE formulario (no envía nada; después viene la revisión). */}
               <VoiceDictation customerId={d.customer_id} onFill={(r) => {
                 setD((x) => ({
@@ -111,9 +125,9 @@ export default function OwnerInvoices({ preview }: { preview: boolean }) {
               }} />
               <label className="text-xs text-slate-600 space-y-1 sm:col-span-2">
                 <span>{t("owner.invoices.customer")}</span>
-                <div className="flex gap-2">
+                <div className="flex gap-2 min-w-0">
                   <select value={d.customer_id} onChange={(e) => { setD({ ...d, customer_id: e.target.value ? Number(e.target.value) : "" }); setSuggested([]); }}
-                          className={`flex-1 rounded-lg border px-2 py-2 text-sm ${suggested.length && !d.customer_id ? "border-amber-400 ring-2 ring-amber-200" : "border-slate-200"}`}>
+                          className={`flex-1 min-w-0 rounded-lg border px-2 py-2 text-sm ${suggested.length && !d.customer_id ? "border-amber-400 ring-2 ring-amber-200" : "border-slate-200"}`}>
                     <option value="">{t("owner.invoices.pickCustomer")}</option>
                     {/* Los que nombró el dictado van primero (si eran dos o más parecidos). */}
                     {[...customers].sort((a, b) => Number(suggested.includes(b.id)) - Number(suggested.includes(a.id))).map((c) =>
@@ -146,7 +160,7 @@ export default function OwnerInvoices({ preview }: { preview: boolean }) {
               </label>
               <label className="text-xs text-slate-600 space-y-1">
                 <span>{t("owner.invoices.dueDate")}</span>
-                <input type="date" value={d.due_date} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setD({ ...d, due_date: e.target.value })}
+                <input type="date" value={d.due_date} min={localISO(new Date())} onChange={(e) => setD({ ...d, due_date: e.target.value })}
                        className="w-full rounded-lg border border-slate-200 px-2 py-2 text-sm" />
               </label>
               <div className="sm:col-span-2 flex gap-2">
@@ -156,12 +170,7 @@ export default function OwnerInvoices({ preview }: { preview: boolean }) {
             </div>
           ) : (
             <div className="mt-3 space-y-3">
-              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-                <dt className="text-slate-500">{t("owner.invoices.customer")}</dt><dd className="text-slate-900">{cust?.name} · {cust?.email}</dd>
-                <dt className="text-slate-500">{t("owner.invoices.concept")}</dt><dd className="text-slate-900">{d.concept}</dd>
-                <dt className="text-slate-500">{t("owner.invoices.total")}</dt><dd className="text-slate-900 font-semibold">{money(Number(d.amount))}</dd>
-                <dt className="text-slate-500">{t("owner.invoices.dueDate")}</dt><dd className="text-slate-900">{day(d.due_date)}</dd>
-              </dl>
+              <InvoicePreview business={businessName} customer={cust} concept={d.concept} amount={d.amount} due={day(d.due_date)} issued={day(localISO(new Date()))} />
               <p className="text-xs text-slate-500">{t("owner.invoices.reviewNote", { email: cust?.email })}</p>
               <div className="flex flex-wrap gap-2">
                 <button disabled={busy} onClick={() => void submit(true)} className={BTN_PRIMARY}>{busy ? t("owner.paypal.working") : t("owner.invoices.send")}</button>
@@ -174,8 +183,12 @@ export default function OwnerInvoices({ preview }: { preview: boolean }) {
       )}
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-3 py-2 border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t("owner.invoices.listTitle")}</div>
         {v.invoices.length === 0 ? (
-          <p className="px-3 py-6 text-sm text-slate-400">{t("owner.invoices.none")}</p>
+          <div className="px-3 py-8 text-center">
+            <p className="text-sm text-slate-500">{t("owner.invoices.none")}</p>
+            <p className="text-xs text-slate-400 mt-1">{t("owner.invoices.noneHint")}</p>
+          </div>
         ) : (
           <ul className="divide-y divide-slate-100">
             {v.invoices.map((inv) => <Row key={inv.id} inv={inv} day={day} preview={preview} busy={busy}
@@ -195,18 +208,25 @@ function Row({ inv, day, preview, busy, confirming, onAskSend, onCancelSend, onS
 }) {
   const { t } = useTranslation();
   const key = inv.overdue ? "OVERDUE" : inv.status;
+  const name = inv.customer?.name ?? "—";
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "·";
   return (
-    <li className="px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-      <span className="text-xs text-slate-400 tabular-nums w-12">{inv.number ? `#${inv.number}` : "—"}</span>
+    <li className={`px-3 py-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm border-s-4 ${ACCENT[key] ?? "border-s-slate-200"}`}>
+      <span className="size-9 shrink-0 rounded-full bg-slate-100 text-slate-600 text-xs font-bold flex items-center justify-center">{initials}</span>
       <span className="min-w-0 flex-1">
-        <span className="font-medium text-slate-800">{inv.customer?.name ?? "—"}</span>
-        <span className="text-slate-500"> · {inv.concept}</span>
+        <span className="block font-semibold text-slate-900 truncate">{name}</span>
+        <span className="block text-xs text-slate-500 truncate">
+          {inv.number ? `#${inv.number} · ` : ""}{inv.concept} · {t("owner.invoices.due", { date: day(inv.due_date) })}
+        </span>
       </span>
-      <span className="tabular-nums font-semibold text-slate-900">{money(Number(inv.amount))}</span>
-      <span className="text-xs text-slate-500">{t("owner.invoices.due", { date: day(inv.due_date) })}</span>
-      <Badge cls={STATUS_CLS[key] ?? STATUS_CLS.DRAFT}>{t(`owner.invoices.status.${key}`, { defaultValue: inv.status })}</Badge>
-      {inv.in_books && <span className="text-xs text-emerald-700">✓ {t("owner.invoices.inBooks")}</span>}
-      <span className="flex items-center gap-2">
+      <span className="text-end">
+        <span className="block tabular-nums text-base font-semibold text-slate-900">{money(Number(inv.amount))}</span>
+        <span className="flex items-center justify-end gap-1.5">
+          <Badge cls={STATUS_CLS[key] ?? STATUS_CLS.DRAFT}>{t(`owner.invoices.status.${key}`, { defaultValue: inv.status })}</Badge>
+          {inv.in_books && <span className="text-[11px] text-emerald-700" title={t("owner.invoices.inBooks")}>✓ {t("owner.invoices.inBooksShort")}</span>}
+        </span>
+      </span>
+      <span className="flex items-center gap-2 basis-full sm:basis-auto justify-end">
         {inv.status === "DRAFT" && !preview && (confirming ? (
           <>
             <span className="text-xs text-slate-600">{t("owner.invoices.confirmSend", { email: inv.customer?.email })}</span>
@@ -223,5 +243,80 @@ function Row({ inv, day, preview, busy, confirming, onAskSend, onCancelSend, onS
         )}
       </span>
     </li>
+  );
+}
+
+function Kpi({ label, value, accent, tone = "text-slate-900" }: { label: string; value: string; accent: string; tone?: string }) {
+  return (
+    <div className={`bg-white rounded-xl border border-slate-200 border-t-4 ${accent} px-4 py-3`}>
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className={`text-2xl font-semibold mt-0.5 ${tone}`}>{value}</div>
+    </div>
+  );
+}
+
+// Comisión de PayPal por factura en EE. UU. (✅ paypal.com/us/business/paypal-business-fees, 1-nov-2026): 3.49% + $0.49.
+// Es una ESTIMACIÓN para el dueño (la real la trae PayPal y entra al libro aparte, en Merchant fees).
+const FEE_RATE = 0.0349, FEE_FIXED = 0.49;
+
+/** La revisión antes de enviar, con forma de FACTURA: quién emite, a quién, el renglón, el total y el vencimiento. */
+function InvoicePreview({ business, customer, concept, amount, due, issued }: {
+  business: string; customer?: Customer; concept: string; amount: string; due: string; issued: string;
+}) {
+  const { t } = useTranslation();
+  const total = Number(amount);
+  const fee = Math.round((total * FEE_RATE + FEE_FIXED) * 100) / 100;
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4 bg-slate-50 border-b border-slate-200">
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-slate-500">{t("owner.invoices.from")}</div>
+          <div className="text-base font-semibold text-slate-900">{business}</div>
+        </div>
+        <div className="text-end">
+          <div className="text-xl font-bold tracking-tight text-slate-900">{t("owner.invoices.docTitle")}</div>
+          <div className="text-xs text-slate-500">{t("owner.invoices.issued", { date: issued })}</div>
+        </div>
+      </div>
+      <div className="px-5 py-4 grid gap-4 sm:grid-cols-2 text-sm">
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-slate-500">{t("owner.invoices.billTo")}</div>
+          <div className="font-semibold text-slate-900">{customer?.name}</div>
+          <div className="text-slate-600">{customer?.email}</div>
+        </div>
+        <div className="sm:text-end">
+          <div className="text-[11px] uppercase tracking-wide text-slate-500">{t("owner.invoices.dueDate")}</div>
+          <div className="font-semibold text-slate-900">{due}</div>
+        </div>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-[11px] uppercase tracking-wide text-slate-500 border-y border-slate-100">
+            <th className="px-5 py-2 text-start font-medium">{t("owner.invoices.concept")}</th>
+            <th className="px-5 py-2 text-end font-medium">{t("owner.invoices.qty")}</th>
+            <th className="px-5 py-2 text-end font-medium">{t("owner.invoices.price")}</th>
+            <th className="px-5 py-2 text-end font-medium">{t("owner.invoices.total")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="px-5 py-3 text-slate-900">{concept}</td>
+            <td className="px-5 py-3 text-end tabular-nums">1</td>
+            <td className="px-5 py-3 text-end tabular-nums">{money(total)}</td>
+            <td className="px-5 py-3 text-end tabular-nums">{money(total)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div className="px-5 py-3 border-t border-slate-200 flex flex-wrap items-end justify-between gap-3">
+        <div className="text-xs text-slate-500 max-w-sm">
+          {t("owner.invoices.payWith")}<br />
+          {t("owner.invoices.feeEstimate", { fee: money(fee), net: money(Math.max(total - fee, 0)) })}
+        </div>
+        <div className="text-end">
+          <div className="text-xs text-slate-500">{t("owner.invoices.totalDue")}</div>
+          <div className="text-2xl font-bold tabular-nums text-slate-900">{money(total)} <span className="text-xs font-medium text-slate-500">USD</span></div>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -136,7 +136,10 @@ function CumulativeChart({ months, lang }: { months: Year["months"]; lang: strin
   const pw = Math.max(0, W - L - R), ph = H - T - B;
   const idx = (ym: string) => Number(ym.slice(5, 7)) - 1;
   const max = niceMax(Math.max(0, ...months.flatMap((m) => [Number(m.cum_in), Number(m.cum_out)])));
-  const x = (i: number) => L + (pw * i) / 11;
+  // El eje empieza en el PRIMER mes cerrado (Jose, 1-nov: enero a junio vacíos no dicen nada) y llega a diciembre.
+  const first = months.length ? Math.min(...months.map((m) => idx(m.month))) : 0;
+  const span = Math.max(1, 11 - first);
+  const x = (i: number) => L + (pw * (i - first)) / span;
   const yv = (v: number) => T + ph - (ph * Math.max(0, v)) / max;
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((k) => k * max);
   const path = (key: "cum_in" | "cum_out") =>
@@ -157,7 +160,7 @@ function CumulativeChart({ months, lang }: { months: Year["months"]; lang: strin
               <text x={L - 6} y={yv(v) + 4} textAnchor="end" className="fill-slate-500 text-[11px] tabular-nums">{compact(v)}</text>
             </g>
           ))}
-          {Array.from({ length: 12 }, (_, i) => (
+          {Array.from({ length: 12 - first }, (_, k) => first + k).map((i) => (
             <text key={i} x={x(i)} y={H - 6} textAnchor="middle" className="fill-slate-500 text-[11px]">{monthShort(lang, i)}</text>
           ))}
           {hv && <line x1={x(idx(hv.month))} x2={x(idx(hv.month))} y1={T} y2={T + ph} stroke="#94a3b8" strokeWidth={1} />}
@@ -176,7 +179,7 @@ function CumulativeChart({ months, lang }: { months: Year["months"]; lang: strin
           )}
           {/* Zonas de pasar el mouse: una franja por mes cerrado, más ancha que la marca. */}
           {months.map((m, i) => (
-            <rect key={m.month} x={x(idx(m.month)) - pw / 22} y={T} width={pw / 11} height={ph} fill="transparent"
+            <rect key={m.month} x={x(idx(m.month)) - pw / span / 2} y={T} width={pw / span} height={ph} fill="transparent"
                   tabIndex={0} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}
                   onFocus={() => setHover(i)} onBlur={() => setHover(null)} />
           ))}
@@ -221,7 +224,11 @@ function Bars({ rows, color }: { rows: Year["out_by_category"]; color: string })
           <div key={r.category} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto] items-center gap-2 text-xs"
                onMouseEnter={() => setHover(r.category)} onMouseLeave={() => setHover(null)}
                title={`${r.category} · ${money(v)} · ${t("owner.year.txCount", { count: r.count })}`}>
-            <span className="truncate text-slate-600">{r.category}{tr && <span className="ms-1 text-slate-400/70 italic">· {tr}</span>}</span>
+            {/* En español, el nombre en español primero y el término contable en inglés debajo (el dueño no es contador). */}
+            <span className="min-w-0">
+              <span className="block truncate text-slate-700">{tr || r.category}</span>
+              {tr && <span className="block truncate text-[10px] text-slate-400">{r.category}</span>}
+            </span>
             <span className="relative h-3.5">
               {lo < 0 && <span className="absolute inset-y-0 w-px bg-slate-300" style={{ left: `${zero}%` }} />}
               <span className={`absolute inset-y-0 transition-opacity ${v < 0 ? "rounded-s" : "rounded-e"} ${hover && hover !== r.category ? "opacity-60" : ""}`}
@@ -246,7 +253,7 @@ function YearTable({ year, closed, lang }: { year: Year; closed: OwnerMonth[]; l
       <tr className="bg-slate-50"><th colSpan={months.length + 2} className="px-2 py-1 text-start text-[11px] uppercase tracking-wide text-slate-500">{label}</th></tr>
       {rows.map((r) => (
         <tr key={side + r.category} className="border-t border-slate-100">
-          <td className="px-2 py-1 text-slate-700 truncate max-w-[14rem]">{r.category}</td>
+          <td className="px-2 py-1 text-slate-700 truncate max-w-[14rem]" title={r.category}>{t(`cat.${r.category}`, { defaultValue: r.category })}</td>
           {months.map((m) => { const v = cell(m, side, r.category); return <td key={m.month} className="px-2 py-1 text-end tabular-nums text-slate-600">{v ? money(Number(v)) : "—"}</td>; })}
           <td className="px-2 py-1 text-end tabular-nums font-semibold text-slate-900">{money(Number(r.amount))}</td>
         </tr>

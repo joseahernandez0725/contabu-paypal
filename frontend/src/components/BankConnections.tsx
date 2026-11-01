@@ -76,7 +76,8 @@ export function SyncSummary({ s, className = "" }: { s: BankSync; className?: st
 }
 
 let scriptPromise: Promise<void> | null = null;
-function loadPlaid(): Promise<void> {
+// Exportado (FASE 16, 1-nov): el portal del dueño también abre Plaid Link para vincular su banco.
+export function loadPlaid(): Promise<void> {
   if (window.Plaid) return Promise.resolve();
   scriptPromise ??= new Promise((resolve, reject) => {
     const s = document.createElement("script");

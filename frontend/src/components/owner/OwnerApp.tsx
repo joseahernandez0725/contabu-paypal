@@ -5,6 +5,8 @@ import OwnerYearView from "./OwnerYear";
 import OwnerAccounts from "./OwnerAccounts";
 import OwnerInvoices from "./OwnerInvoices";
 import ConnectPayPal from "./ConnectPayPal";
+import { monthLabel } from "./MonthCloseSection";
+import { getInvoices, money } from "../../api";
 import type { Company } from "../../types";
 import OwnerSidebar, { type OwnerView } from "./OwnerSidebar";
 import { DetailCard, DetailEmpty, DetailHeader, PageHeader, Stat } from "../PageKit";
@@ -37,8 +39,9 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
   notice?: { tone: "ok" | "warn" | "error"; text: string; onClose: () => void } | null;   // la vuelta de PayPal
   initialView?: OwnerView;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [view, setView] = useState<OwnerView>(initialView);
+  const [newInvoice, setNewInvoice] = useState(0);   // "+ Nueva factura" desde el Resumen: abre Cobros con el formulario
   useEffect(() => { setView(initialView); }, [initialView]);
   const [menuOpen, setMenuOpen] = useState(false); // el cajón de la barra lateral (solo celular)
   const [home, setHome] = useState<OwnerHome | null>(null);
@@ -78,6 +81,9 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
           </button>
           <h1 className="font-semibold text-slate-900 truncate">{t(`owner.nav.${view}`)}</h1>
           {managedBy && <span className="text-sm text-slate-400 truncate">· {t("owner.managedBy", { name: managedBy })}</span>}
+          {home && home.closed_months[0] && (
+            <span className="hidden sm:inline text-sm text-slate-400 truncate">· {t("owner.lastClosed", { month: monthLabel(i18n.language || "en", home.closed_months[0].month) })}</span>
+          )}
         </header>
 
         <main className="flex-1 w-full px-3 sm:px-4 py-3 space-y-3">
@@ -94,12 +100,15 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
           ) : view === "summary" ? (
             <>
               {!home.paypal.connected && <PayPalHero preview={home.preview} />}
+              <QuickActions preview={home.preview} paypal={home.paypal.connected}
+                            onNewInvoice={() => { setView("invoices"); setNewInvoice((n) => n + 1); }}
+                            onOpenInvoices={() => setView("invoices")} />
               <Summary home={home} />
             </>
           ) : view === "accounts" ? (
-            <OwnerAccounts preview={home.preview} />
+            <OwnerAccounts preview={home.preview} managedBy={home.managed_by} />
           ) : (
-            <OwnerInvoices preview={home.preview} />
+            <OwnerInvoices preview={home.preview} businessName={home.company.name} autoOpen={newInvoice} />
           )}
         </main>
       </div>
@@ -154,6 +163,33 @@ function PayPalHero({ preview }: { preview: boolean }) {
         </p>
       </div>
       <ConnectPayPal from="owner" disabled={preview} title={preview ? t("owner.preview.disabled") : undefined} />
+    </div>
+  );
+}
+
+/** El acceso rápido del Resumen (Jose, 1-nov): lo diario del dueño es COBRAR. "Por cobrar" sale de SQL (Cobros). */
+function QuickActions({ preview, paypal, onNewInvoice, onOpenInvoices }: {
+  preview: boolean; paypal: boolean; onNewInvoice: () => void; onOpenInvoices: () => void;
+}) {
+  const { t } = useTranslation();
+  const [outstanding, setOutstanding] = useState<{ amount: string; overdue: number } | null>(null);
+  useEffect(() => {
+    getInvoices().then((v) => setOutstanding({ amount: v.summary.outstanding, overdue: v.summary.overdue })).catch(() => {});
+  }, []);
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+      <button onClick={onNewInvoice} disabled={preview || !paypal} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50"
+              title={preview ? t("owner.preview.disabled") : !paypal ? t("owner.invoices.connectFirst") : undefined}>
+        + {t("owner.invoices.new")}
+      </button>
+      {outstanding && (
+        <button onClick={onOpenInvoices} className="text-start">
+          <span className="block text-xs text-slate-500">{t("owner.invoices.outstandingTitle")}</span>
+          <span className="text-lg font-semibold text-slate-900">{money(Number(outstanding.amount))}</span>
+          {outstanding.overdue > 0 && <span className="ms-2 text-xs font-medium text-rose-700">{t("owner.quick.overdue", { count: outstanding.overdue })}</span>}
+        </button>
+      )}
+      <span className="ms-auto text-xs text-slate-500">{t("owner.quick.hint")}</span>
     </div>
   );
 }
