@@ -44,7 +44,9 @@
     "tryDemo": "Take the guided tour",
     "demoHint": "No account. Read-only, with the agents' review already done.",
     "demoNotEnabled": "The demo access isn't turned on yet. Sign in with Google instead.",
-    "liveHint": "Live demo: run the agents yourself on your own copy of the books. You'll need an access code."
+    "liveHint": "Live demo: run the agents yourself on your own copy of the books. You'll need an access code.",
+    "demoHintPaypal": "No account. Read-only: a business already connected to PayPal sandbox.",
+    "liveHintPaypal": "Live demo: your own seeded book, where you act as the owner and can connect your own PayPal sandbox app. You'll need an access code."
   },
   "review": {
     "count": "{{count}} transactions",
@@ -1468,7 +1470,8 @@
     "enterCode": "Enter your access code",
     "banner": {
       "title": "Guided tour · read-only",
-      "text": "The agents' review is already done. Want to run them yourself?"
+      "text": "The agents' review is already done. Want to run them yourself?",
+      "textPaypal": "Want to send an invoice with your own PayPal sandbox?"
     },
     "code": {
       "title": "Enter your access code",
@@ -1483,9 +1486,11 @@
         "demo_code_locked": "Too many tries. Wait a few minutes and try again.",
         "demo_google_required": "Sign in with Google first.",
         "network": "Couldn't reach the server. Try again."
-      }
+      },
+      "leadPaypal": "The live demo gives you your own seeded book, where you act as the business owner and can connect your own PayPal sandbox app."
     },
-    "tourMissing": "The guided tour isn't ready yet. Please come back in a little while."
+    "tourMissing": "The guided tour isn't ready yet. Please come back in a little while.",
+    "liveOnlyHintPaypal": "The guided tour is read-only. In the live demo you get your own book and can connect your own PayPal sandbox app."
   },
   "demoGuide": {
     "open": "Guide",
@@ -1866,7 +1871,7 @@
       "noMic": "Your browser has no voice dictation: use your keyboard's microphone in this same field.",
       "fill": "Fill in the form",
       "clear": "Clear",
-      "privacy": "Processed by AI (NVIDIA Nemotron) without your saved customer's name. Nothing is sent until you confirm.",
+      "privacy": "Processed by AI without your saved customer's name. Nothing is sent until you confirm.",
       "filled": "Form filled from your dictation. Review it before continuing.",
       "pickOne": "The dictation matches more than one customer: pick one in the list (marked ★) and fill again.",
       "noCustomer": "I didn't find that customer in your list: pick or add them, then fill the form again.",
@@ -1908,6 +1913,41 @@
       "askAccount_other": "The file doesn't say which account it's from. Enter the account's last 4 digits for {{count}} transactions.",
       "saveAccount": "Save account",
       "accountError": "Couldn't save the account. Enter at least 4 digits."
+    },
+    "tour": {
+      "title": "PayPal in ContaBu: a quick tour",
+      "introTour": "A fictional HVAC business, already connected to PayPal sandbox. Every stop uses data already in the books.",
+      "introLive": "Your own seeded book. Connect your PayPal sandbox app to send real sandbox invoices.",
+      "show": "Show the tour",
+      "hide": "Hide the tour",
+      "bookkeeper": "bookkeeper",
+      "backToPortal": "Owner portal",
+      "stops": {
+        "summary": {
+          "title": "Summary",
+          "body": "The owner sees closed periods only: PayPal sales at gross, fees as an expense, refunds subtracted. Never the P&L."
+        },
+        "accounts": {
+          "title": "Accounts",
+          "body": "PayPal is one more account of the books, with its sandbox balance and a transfer to the bank."
+        },
+        "invoices": {
+          "title": "Invoices",
+          "body": "Each paid PayPal invoice was recorded as a sale on its own, with its fee recorded separately. In your own book you can dictate one."
+        },
+        "bank": {
+          "title": "Bank feeds",
+          "body": "Each PayPal withdrawal is matched to its bank deposit, and a purchase to its bank charge, so nothing is counted twice."
+        },
+        "close": {
+          "title": "Month-end close",
+          "body": "Closing a period freezes it. Only closed periods reach the owner's Summary."
+        },
+        "try": {
+          "title": "Try it with your PayPal sandbox",
+          "body": "Continue with Google, enter the access code and connect your own sandbox app."
+        }
+      }
     }
   }
 }

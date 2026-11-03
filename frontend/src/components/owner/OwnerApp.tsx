@@ -8,6 +8,9 @@ import ConnectPayPal from "./ConnectPayPal";
 import { monthLabel } from "./MonthCloseSection";
 import { getInvoices, money } from "../../api";
 import type { Company } from "../../types";
+import { PAYPAL_DEMO } from "../../demo";
+import type { View } from "../Sidebar";
+import PayPalTour from "./PayPalTour";
 import OwnerSidebar, { type OwnerView } from "./OwnerSidebar";
 import { DetailCard, DetailEmpty, DetailHeader, PageHeader, Stat } from "../PageKit";
 
@@ -31,11 +34,12 @@ export function openOwnerPreview() {
   window.dispatchEvent(new Event(OWNER_PREVIEW_EVENT));
 }
 
-export default function OwnerApp({ company, companies, onSwitch, onExitPreview, notice, initialView = "summary" }: {
+export default function OwnerApp({ company, companies, onSwitch, onExitPreview, onOpenConsole, notice, initialView = "summary" }: {
   company: Company;
   companies: Company[];
   onSwitch: (c: Company) => void;
   onExitPreview?: () => void;   // solo en la vista previa del bookkeeper: volver a la consola
+  onOpenConsole?: (v: View) => void;   // `paypal.contabu.com`: la guía lleva a una pantalla de la consola
   notice?: { tone: "ok" | "warn" | "error"; text: string; onClose: () => void } | null;   // la vuelta de PayPal
   initialView?: OwnerView;
 }) {
@@ -87,6 +91,7 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
         </header>
 
         <main className="flex-1 w-full px-3 sm:px-4 py-3 space-y-3">
+          {PAYPAL_DEMO && home && <PayPalTour view={view} onView={setView} onConsole={onOpenConsole} />}
           {notice && (
             <div className={`flex items-start gap-3 rounded-xl px-3 py-2.5 text-sm ${notice.tone === "ok" ? "bg-emerald-50 text-emerald-900" : notice.tone === "warn" ? "bg-amber-50 text-amber-900" : "bg-rose-50 text-rose-900"}`}>
               <span className="flex-1">{notice.text}</span>

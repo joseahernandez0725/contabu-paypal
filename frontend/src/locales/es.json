@@ -62,7 +62,9 @@
     "tryDemo": "Hacer la visita guiada",
     "demoHint": "Sin cuenta. De solo lectura, con la revisión de los agentes ya hecha.",
     "demoNotEnabled": "El acceso al demo todavía no está activado. Entra con Google.",
-    "liveHint": "Demo en vivo: corre tú los agentes sobre tu propia copia de los libros. Necesitas un código de acceso."
+    "liveHint": "Demo en vivo: corre tú los agentes sobre tu propia copia de los libros. Necesitas un código de acceso.",
+    "demoHintPaypal": "Sin cuenta. Solo lectura: un negocio ya conectado al sandbox de PayPal.",
+    "liveHintPaypal": "Demo en vivo: tu propio libro sembrado, donde actúas como el dueño y puedes conectar tu propia app de sandbox de PayPal. Necesitas un código de acceso."
   },
   "review": {
     "count": "{{count}} movimientos",
@@ -1597,7 +1599,8 @@
     "enterCode": "Escribe tu código de acceso",
     "banner": {
       "title": "Visita guiada · solo lectura",
-      "text": "La revisión de los agentes ya está hecha. ¿Quieres correrlos tú?"
+      "text": "La revisión de los agentes ya está hecha. ¿Quieres correrlos tú?",
+      "textPaypal": "¿Quieres enviar una factura con tu propio sandbox de PayPal?"
     },
     "code": {
       "title": "Escribe tu código de acceso",
@@ -1612,9 +1615,11 @@
         "demo_code_locked": "Demasiados intentos. Espera unos minutos y vuelve a probar.",
         "demo_google_required": "Primero entra con Google.",
         "network": "No se pudo contactar al servidor. Inténtalo de nuevo."
-      }
+      },
+      "leadPaypal": "El demo en vivo te da tu propio libro sembrado, donde actúas como el dueño del negocio y puedes conectar tu propia app de sandbox de PayPal."
     },
-    "tourMissing": "La visita guiada todavía no está lista. Vuelve en un rato."
+    "tourMissing": "La visita guiada todavía no está lista. Vuelve en un rato.",
+    "liveOnlyHintPaypal": "La visita guiada es de solo lectura. En el demo en vivo recibes tu propio libro y puedes conectar tu propia app de sandbox de PayPal."
   },
   "demoGuide": {
     "open": "Guía",
@@ -1995,7 +2000,7 @@
       "noMic": "Tu navegador no tiene dictado por voz: usa el micrófono del teclado en este mismo campo.",
       "fill": "Llenar el formulario",
       "clear": "Borrar",
-      "privacy": "Lo procesa la IA (NVIDIA Nemotron) sin el nombre de tu cliente guardado. Nada se envía hasta que confirmes.",
+      "privacy": "Lo procesa la IA sin el nombre de tu cliente guardado. Nada se envía hasta que confirmes.",
       "filled": "Formulario llenado con tu dictado. Revísalo antes de continuar.",
       "pickOne": "El dictado coincide con más de un cliente: elige cuál en la lista (marcados con ★) y vuelve a llenar.",
       "noCustomer": "No reconocí al cliente en tu lista: elígelo o agrégalo y vuelve a llenar el formulario.",
@@ -2037,6 +2042,41 @@
       "askAccount_other": "El archivo no dice de qué cuenta es. Escribe los últimos 4 dígitos de la cuenta para {{count}} movimientos.",
       "saveAccount": "Guardar cuenta",
       "accountError": "No se pudo guardar la cuenta. Escribe al menos 4 dígitos."
+    },
+    "tour": {
+      "title": "PayPal en ContaBu: una visita rápida",
+      "introTour": "Un negocio ficticio de climatización, ya conectado al sandbox de PayPal. Cada parada usa datos que ya están en la contabilidad.",
+      "introLive": "Tu propio libro sembrado. Conecta tu app de sandbox de PayPal para enviar facturas reales de sandbox.",
+      "show": "Mostrar la visita",
+      "hide": "Ocultar la visita",
+      "bookkeeper": "bookkeeper",
+      "backToPortal": "Portal del dueño",
+      "stops": {
+        "summary": {
+          "title": "Resumen",
+          "body": "El dueño solo ve periodos cerrados: ventas de PayPal por el bruto, comisiones como gasto y reembolsos restados. Nunca el P&L."
+        },
+        "accounts": {
+          "title": "Cuentas",
+          "body": "PayPal es una cuenta más de la contabilidad, con su saldo de sandbox y la transferencia al banco."
+        },
+        "invoices": {
+          "title": "Cobros",
+          "body": "Cada factura cobrada por PayPal se registró sola como venta, con su comisión registrada aparte. En tu propio libro puedes dictar una."
+        },
+        "bank": {
+          "title": "Bancos",
+          "body": "Cada retiro de PayPal se empareja con su depósito en el banco, y una compra con su cargo, para que nada se cuente dos veces."
+        },
+        "close": {
+          "title": "Cierre de mes",
+          "body": "Cerrar un periodo lo congela. Solo los periodos cerrados llegan al Resumen del dueño."
+        },
+        "try": {
+          "title": "Pruébalo con tu sandbox de PayPal",
+          "body": "Entra con Google, escribe el código de acceso y conecta tu propia app de sandbox."
+        }
+      }
     }
   }
 }

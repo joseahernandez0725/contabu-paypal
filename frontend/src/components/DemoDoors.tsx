@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { signOut } from "firebase/auth";
 import { auth } from "../firebase";
-import { goLive, inTour } from "../demo";
+import { goLive, inTour, PAYPAL_DEMO } from "../demo";
 import { DemoCodeError, redeemDemoCode, refillDemoPool } from "../api";
 import LanguageSwitcher from "./LanguageSwitcher";
 
@@ -26,7 +26,7 @@ export function LiveOnly({ children, compact = false }: { children: ReactNode; c
   if (compact) {
     // Donde cabía un botón chico: una sola píldora, que es a la vez el aviso y el enlace.
     return (
-      <button type="button" onClick={() => void goLive()} title={`${t("demoDoor.liveOnlyHint")} → ${label}`}
+      <button type="button" onClick={() => void goLive()} title={`${t(PAYPAL_DEMO ? "demoDoor.liveOnlyHintPaypal" : "demoDoor.liveOnlyHint")} → ${label}`}
               className="shrink-0 max-w-[8.5rem] leading-tight text-center px-2.5 py-1 rounded-lg border border-dashed border-slate-300 text-xs text-slate-500 hover:text-brand-green hover:border-brand-green">
         {t("demoDoor.liveOnly")} ↗
       </button>
@@ -35,7 +35,7 @@ export function LiveOnly({ children, compact = false }: { children: ReactNode; c
   return (
     <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
       <span className="px-2.5 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 cursor-not-allowed"
-            title={t("demoDoor.liveOnlyHint")}>
+            title={t(PAYPAL_DEMO ? "demoDoor.liveOnlyHintPaypal" : "demoDoor.liveOnlyHint")}>
         {t("demoDoor.liveOnly")}
       </span>
       <button type="button" onClick={() => void goLive()} className="font-semibold text-brand-green hover:underline">
@@ -54,7 +54,7 @@ export function TourBanner() {
     <div className="ms-auto min-w-0 flex items-center gap-2 rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-xs text-amber-900">
       {/* En el celular no cabe todo: el título se recorta y el enlace queda siempre entero. */}
       <span className="font-semibold min-w-0 truncate">{t("demoDoor.banner.title")}</span>
-      <span className="hidden lg:inline truncate">{t("demoDoor.banner.text")}</span>
+      <span className="hidden lg:inline truncate">{t(PAYPAL_DEMO ? "demoDoor.banner.textPaypal" : "demoDoor.banner.text")}</span>
       <button type="button" onClick={() => void goLive()} className="shrink-0 font-semibold text-brand-green hover:underline">
         {label}
       </button>
@@ -116,7 +116,7 @@ export function AccessCodeScreen({ email, onDone, onBrowseTour }: {
     <DoorCard>
       <div className="text-center space-y-1.5">
         <h1 className="font-semibold text-slate-900">{t("demoDoor.code.title")}</h1>
-        <p className="text-sm text-slate-500">{t("demoDoor.code.lead")}</p>
+        <p className="text-sm text-slate-500">{t(PAYPAL_DEMO ? "demoDoor.code.leadPaypal" : "demoDoor.code.lead")}</p>
         {email && <p className="text-xs text-slate-400">{t("demoDoor.code.signedInAs", { email })}</p>}
       </div>
       <form onSubmit={submit} className="space-y-3">

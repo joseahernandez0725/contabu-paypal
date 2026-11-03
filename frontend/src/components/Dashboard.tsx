@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { getAuditSummary, getBankConnections, getCompany, getIncomeStatement, getTransactions, money, type AuditBoard, type BankConnection } from "../api";
-import { inTour, openDemoGuide } from "../demo";
+import { inTour, openDemoGuide, PAYPAL_DEMO } from "../demo";
 import type { IncomeStatement as IS, Transaction } from "../types";
 import IncomeStatement from "./IncomeStatement";
 import NotesCard from "./NotesCard";
@@ -130,7 +130,7 @@ export default function Dashboard({ onNavigate, onOpenPending }: {
   }, [start, end]);
 
   // 🔄 25-oct (Jose): nada de la guía (ni este banner con su lista "What to look at") aparece en el demo en vivo.
-  const intro = inTour() ? <DemoIntro onNavigate={onNavigate} book={book} /> : null;
+  const intro = inTour() && !PAYPAL_DEMO ? <DemoIntro onNavigate={onNavigate} book={book} /> : null;
 
   if (error) return <div className="alert alert-error">{error}</div>;
   if (!ytd || !all || !txs)

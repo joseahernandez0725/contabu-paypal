@@ -5,6 +5,7 @@ import { auth } from "../firebase";
 import CompanySwitcher from "./CompanySwitcher";
 import LanguageSwitcher from "./LanguageSwitcher";
 import type { Company } from "../types";
+import { PAYPAL_DEMO } from "../demo";
 
 // Las vistas de UN libro (la empresa abierta). Es la fuente del tipo `View` que usa App.tsx.
 // Las reglas NO tienen pestaña propia: viven dentro de Movimientos / Transactions (Bookkeeping · Reglas · Pivote). Jose, 30-sep.
@@ -47,7 +48,9 @@ const LOGOUT_ICON = ic(<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><pa
 
 // Orden (Jose, 4-oct): Resumen → Bancos → Movimientos → Auditoría → P&L → Ajustes.
 // 18-oct (ronda de diseño 2): Notas entre Movimientos y Auditoría — los datos → lo que sabe el bookkeeper → lo que hace la IA.
-const BOOK_ORDER: View[] = ["dashboard", "upload", "transactions", "notes", "audit", "pnl", "settings"];
+// `paypal.contabu.com` (Jose, 2-nov): sin Notas ni Auditoría, que son los agentes del concurso de Nebius (y gastan créditos).
+const BOOK_ORDER: View[] = PAYPAL_DEMO ? ["dashboard", "upload", "transactions", "pnl", "settings"]
+  : ["dashboard", "upload", "transactions", "notes", "audit", "pnl", "settings"];
 
 // Retardos del hover: abrir con una pausa corta evita que la barra salte cuando el mouse solo CRUZA
 // el borde camino a otra cosa (p. ej., hacia los números de fila de la Hoja); cerrar con otra pausa

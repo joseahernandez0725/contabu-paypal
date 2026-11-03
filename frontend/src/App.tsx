@@ -220,6 +220,7 @@ function App() {
     return (
       <OwnerApp key={company.id} company={company} companies={companies} onSwitch={switchCompany}
                 onExitPreview={company.role === "CLIENT" ? undefined : () => setOwnerPreview(false)}
+                onOpenConsole={company.role === "CLIENT" ? undefined : (v) => { setOwnerPreview(false); setView(v); }}
                 notice={ppNotice?.from === "owner" ? { ...ppNotice, onClose: () => setPpNotice(null) } : null}
                 initialView={ownerStart} />
     );
@@ -265,7 +266,13 @@ function App() {
           {company && <span className={`text-sm text-slate-400 truncate ${DEMO_MODE ? "hidden sm:inline" : ""}`}>· {company.name}</span>}
           {/* 🔄 25-oct (Jose): nada de la guía aparece en el demo EN VIVO — ni el botón "Guide" ni el aviso de la
               visita. Solo en la visita guiada (`touring`). */}
-          {touring && (
+          {/* `paypal.contabu.com`: la vuelta al portal del dueño, que es lo que se concursa (en la visita y en vivo). */}
+          {PAYPAL_DEMO && company && (
+            <button onClick={() => setOwnerPreview(true)} className="ms-auto shrink-0 rounded-full bg-[#FFC439] px-3 py-1 text-xs font-semibold text-[#003087] hover:bg-[#f2ba36]">
+              {t("owner.tour.backToPortal")}
+            </button>
+          )}
+          {touring && !PAYPAL_DEMO && (
             <div className="ms-auto min-w-0 flex items-center gap-2">
               <button onClick={openDemoGuide} className="shrink-0 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                 {t("demoGuide.open")}
@@ -338,7 +345,7 @@ function App() {
 
       {/* El recorrido guiado (23-oct; 🔄 25-oct, Jose: SOLO en la visita guiada — nada de esto en el demo en
           vivo, ni el "Guide" de arriba ni la lista de antes, `DemoTour`, que se borró). */}
-      {touring && <DemoGuide onNavigate={setView} onSidebar={onGuideSidebar} onOpenRow={(id) => openInSheet({ id })} />}
+      {touring && !PAYPAL_DEMO && <DemoGuide onNavigate={setView} onSidebar={onGuideSidebar} onOpenRow={(id) => openInSheet({ id })} />}
     </div>
   );
 }

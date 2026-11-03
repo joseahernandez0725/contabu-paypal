@@ -80,7 +80,8 @@ export default function PayPalCard({ canEdit }: { canEdit: boolean }) {
       {s.status === "error" && s.last_error && <p className="text-xs text-rose-700">{payPalError(t, "paypal_" + s.last_error)}</p>}
       <ImportedLine s={s} />
       {err && <p className="text-xs text-rose-700">{err}</p>}
-      {s.connected && <PayPalTransfers refreshKey={tick} />}
+      {/* Siempre: lo ya emparejado sigue en el libro aunque PayPal se desconecte (y el libro sembrado del demo lo trae). */}
+      <PayPalTransfers refreshKey={tick} />
     </div>
   );
 }
