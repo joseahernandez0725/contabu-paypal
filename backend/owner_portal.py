@@ -23,6 +23,7 @@ from sqlmodel import Session, select
 
 from auth import console_company, current_user, effective_role, owned_company, owner_company
 from db import get_session
+import demo
 import month_close
 from models import Company, CompanyMember, Firm, FirmMember, PayPalConnection, Role, User
 
@@ -50,7 +51,7 @@ def owner_home(company_id: int, user: User = Depends(current_user), session: Ses
         "managed_by": ((firm.brand_name or "").strip() or firm.name) if firm else None,
         "brand_color": firm.brand_color if firm else None,
         "brand_logo_url": firm.brand_logo_url if firm else None,
-        "preview": role != Role.CLIENT,
+        "preview": not demo.acts_as_owner(role),
         "closed_months": month_close.owner_months(session, company.id),
         "years": month_close.owner_years(session, company.id),   # el año acumulado (SQL sobre las fotos)
         # ¿Ya conectó su PayPal? El portal lo pide a la vista mientras no (Jose, 1-nov: es clave en el demo).

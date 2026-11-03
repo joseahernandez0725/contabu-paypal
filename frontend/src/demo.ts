@@ -6,6 +6,8 @@ import { signInWithPopup } from "firebase/auth";
 import { auth, googleProvider } from "./firebase";
 
 export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
+// `paypal.contabu.com` (FASE 16 Paso 7): se entra directo al portal del dueño, que es lo que se concursa.
+export const PAYPAL_DEMO = import.meta.env.VITE_PAYPAL_DEMO === "true";
 
 // EL RECORRIDO GUIADO (23-oct; 🔄 25-oct: solo en la visita guiada, nunca en el demo en vivo — ver
 // `DemoGuide.tsx`): la pantalla de inicio + 14 paradas (la guía rápida). Lo abren el botón "Guide" de la barra de arriba y el

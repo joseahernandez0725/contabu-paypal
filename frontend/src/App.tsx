@@ -12,7 +12,7 @@ import Onboarding from "./components/Onboarding";
 import VerifyEmailBanner from "./components/VerifyEmailBanner";
 import Login from "./components/Login";
 import Sidebar, { viewLabel, type View } from "./components/Sidebar";
-import { DEMO_MODE, ENTER_CODE_EVENT, openDemoGuide, setTouring, type DemoDoor } from "./demo";
+import { DEMO_MODE, PAYPAL_DEMO, ENTER_CODE_EVENT, openDemoGuide, setTouring, type DemoDoor } from "./demo";
 import { AccessCodeScreen, TourBanner, TourMissing } from "./components/DemoDoors";
 import DemoGuide from "./components/DemoGuide";
 import OwnerApp, { OWNER_PREVIEW_EVENT } from "./components/owner/OwnerApp";
@@ -63,7 +63,7 @@ function App() {
     else setGuideSidebar(open);
   }, []);
   // "Ver como el dueño" (FASE 16): la consola abre el portal del dueño en vista previa, sin cambiar permisos.
-  const [ownerPreview, setOwnerPreview] = useState(false);
+  const [ownerPreview, setOwnerPreview] = useState(PAYPAL_DEMO);
   // La VUELTA de "Conectar con PayPal" (FASE 16, 1-nov): PayPal regresa a /paypal-return?code&state; se termina la
   // conexión, se vuelve a la pantalla de donde salió (portal → Cuentas, consola → Bancos) y se muestra el resultado.
   const [ppNotice, setPpNotice] = useState<{ tone: "ok" | "warn" | "error"; text: string; from: "owner" | "console" } | null>(null);

@@ -183,6 +183,36 @@ def main() -> int:
         r = client.post(f"/api/companies/{company_id}/paypal/sync", headers=cl)
         expect("el dueño NO sincroniza (eso es del bookkeeper)", r.status_code == 403, r.status_code)
 
+        # ── Deuda #36: compra pagada con PayPal y fondeada por el banco ──
+        paypal._search = lambda start, end: SAMPLE + [tx("BUY2", "T0001", "-75.00", name="Uline", day="2026-06-16")]
+        with Session(engine) as s:
+            for day, desc, amt, sec_, cat, src in [
+                ("2026-06-17", "PAYPAL *ULINE", "75.00", None, None, None),
+                ("2026-06-16", "PAYPAL *HOME DEPOT", "25.00", AccountType.COGS, "Materials", "rule"),
+                ("2026-06-16", "CHECK 77", "25.00", None, None, None)]:
+                s.add(Transaction(company_id=company_id, date=_d.fromisoformat(day), description=desc, amount=Decimal(amt),
+                                  is_inflow=False, bank_account="Chase Checking", account_type=sec_, category=cat, source=src))
+            s.commit()
+        client.post(f"/api/companies/{company_id}/paypal/sync", headers=bk)
+        v = client.get(f"/api/companies/{company_id}/paypal/transfers", headers=bk).json()
+        with Session(engine) as s:
+            uline = s.exec(select(Transaction).where(Transaction.company_id == company_id)
+                           .where(Transaction.description == "PAYPAL *ULINE")).one()
+            got = (uline.account_type.value if uline.account_type else None, uline.category, uline.source)
+        expect("cargo del banco Pendiente → Transfer solo; el gasto queda en la fila de PayPal", got == ("NON_PL", "Transfer", "transfer")
+               and any(m["kind"] == "purchase" and m["deposit"]["description"] == "PAYPAL *ULINE" for m in v["matched"]), got)
+        buy = next((p for p in v["proposals"] if p["kind"] == "purchase"), {})
+        expect("cargo con categoría de una regla → lo confirma el bookkeeper; un cargo sin PAYPAL no es candidato",
+               [c["description"] for c in buy.get("candidates", [])] == ["PAYPAL *HOME DEPOT"], buy.get("candidates"))
+        expect("una compra sin cargo en el banco no se reporta como faltante",
+               all(u["kind"] == "withdrawal" for u in v["unmatched"]), len(v["unmatched"]))
+        r = client.post(f"/api/companies/{company_id}/paypal/transfers/{buy['withdrawal']['id']}/confirm",
+                        headers=bk, json={"bank_tx_id": buy["candidates"][0]["id"]})
+        with Session(engine) as s:
+            cogs = s.exec(select(func.sum(signed_amount())).where(Transaction.company_id == company_id)
+                          .where(Transaction.account_type == AccountType.COGS)).one()
+        expect("confirmado: la compra de Home Depot cuenta UNA vez (COGS = 25)", r.status_code == 200 and cogs == Decimal("25.00"), cogs)
+
         # ── Paso 5: Cobros (la Invoicing API, de mentira: sin red) ──
         state = {"status": "DRAFT", "amount": "120.00"}
         def fake_api(method, path, **kw):
@@ -233,6 +263,65 @@ def main() -> int:
             sales = s.exec(select(func.count(Transaction.id)).where(Transaction.company_id == company_id)
                            .where(Transaction.amount == Decimal("120.00")).where(Transaction.is_inflow.is_(True))).one()
         expect("la sincronización reconoce el pago de la factura: 1 venta, + su comisión", sales == 1 and got.get("new") == 1, (sales, got.get("new")))
+
+        # ── Deuda #37: el webhook. La firma la verifica PayPal; la factura se lee, no se le cree al aviso ──
+        from models import Company, Invoice, PayPalConnection
+        with Session(engine) as s:
+            conn = s.exec(select(PayPalConnection).where(PayPalConnection.company_id == company_id)).one()
+            conn_id = conn.id; conn.webhook_id = "WH-1"; s.add(conn)
+            inv2 = Invoice(company_id=company_id, customer_id=cust["id"], paypal_invoice_id="INV2-HOOK", number="0002", concept="Hook",
+                           amount=Decimal("80.00"), due_date=_d(2099, 1, 1), status="SENT")
+            s.add(inv2); s.commit(); s.refresh(inv2); inv2_id = inv2.id
+        genuine = {"ok": False}
+        def hook_api(method, path, **kw):
+            if path.endswith("verify-webhook-signature"):
+                return {"verification_status": "SUCCESS" if genuine["ok"] else "FAILURE"}
+            return {"id": "INV2-HOOK", "status": hook_state["status"], "payments": {"transactions": hook_state["payments"]}}
+        hook_state = {"status": "PARTIALLY_PAID", "payments": [{"type": "PAYPAL", "payment_id": "HOOKPAY", "payment_date": "2026-06-26",
+                                                                "amount": {"currency_code": "USD", "value": "80.00"}}]}
+        paypal.api = hook_api
+        event = {"event_type": "INVOICING.INVOICE.PAID", "resource": {"invoice": {"id": "INV2-HOOK"}}}
+        hook = f"/api/paypal/webhook/{conn_id}"
+        def hook_rows():
+            with Session(engine) as s:
+                return s.get(Invoice, inv2_id).status, s.exec(select(func.count(PayPalEntry.id)).where(PayPalEntry.paypal_id == "HOOKPAY")).one()
+        r = client.post(hook, json=event)
+        expect("un aviso SIN firma válida → 400 y no cambia nada", r.status_code == 400 and hook_rows() == ("SENT", 0), (r.status_code, hook_rows()))
+        genuine["ok"] = True
+        r = client.post(hook, json=event)
+        expect("el evento dice PAID pero la factura está parcial → no se asienta", r.status_code == 200 and hook_rows() == ("PARTIALLY_PAID", 0), hook_rows())
+        hook_state["status"] = "PAID"
+        client.post(hook, json=event); client.post(hook, json=event)
+        expect("pagada: entra SOLA, y el aviso repetido no duplica", hook_rows() == ("PAID", 1), hook_rows())
+
+        # ── Las credenciales propias (Jose, 2-nov): el juez usa SU app de sandbox ──
+        url_keys = f"/api/companies/{other_id}/paypal/credentials"
+        def bad_keys(i, sec):
+            raise paypal.PayPalError("auth_failed")
+        paypal._account_of_keys = bad_keys
+        r = client.post(url_keys, headers=bk, json={"client_id": "JUDGE", "client_secret": "s3cret-judge"})
+        expect("llaves que PayPal rechaza → 422 y no se guarda nada", r.status_code == 422 and r.json()["detail"]["code"] == "paypal_auth_failed", r.status_code)
+        paypal._account_of_keys = lambda i, sec: "SELLER1"
+        r = client.post(url_keys, headers=bk, json={"client_id": "JUDGE", "client_secret": "s3cret-judge"})
+        expect("la cuenta que ya está en otro libro → 409 paypal_in_use", r.status_code == 409, r.status_code)
+        from cryptography.fernet import Fernet
+        os.environ.setdefault("BANK_TOKEN_KEY", Fernet.generate_key().decode())
+        paypal._account_of_keys = lambda i, sec: "ACC-JUDGE"
+        used = {}
+        def search_keys(start, end):
+            used["keys"] = paypal._keys()
+            return []
+        paypal._search = search_keys
+        r = client.post(url_keys, headers=bk, json={"client_id": "JUDGE", "client_secret": "s3cret-judge"})
+        with Session(engine) as s:
+            jc = s.exec(select(PayPalConnection).where(PayPalConnection.company_id == other_id)).one()
+            stored = (jc.mode, jc.merchant_id, jc.client_id, jc.client_secret_enc)
+        expect("se conecta en modo own_keys y sincroniza con SUS llaves", r.status_code == 200 and stored[:3] == ("own_keys", "ACC-JUDGE", "JUDGE")
+               and used.get("keys") == ("JUDGE", "s3cret-judge"), (r.status_code, stored[:3]))
+        expect("el secret va CIFRADO y nunca vuelve al navegador", "s3cret-judge" not in (stored[3] or "s3cret-judge") and "s3cret-judge" not in r.text
+               and "client_secret" not in r.text, "ok")
+        paypal.use_connection(None)
+        expect("otro libro sigue con las llaves de la app", paypal._keys()[0] != "JUDGE", paypal._keys()[0])
 
         acc = client.get(f"/api/owner/companies/{company_id}/accounts", headers=cl)
         text = acc.text.lower()

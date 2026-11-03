@@ -54,6 +54,9 @@ from models import (AgentCall, BookNote, Company, DemoAccess, DemoCodeAttempt, D
 log = logging.getLogger("contabu.demo")
 
 DEMO_MODE = os.getenv("DEMO_MODE", "").lower() in {"1", "true", "yes"}
+# El despliegue de `paypal.contabu.com` (FASE 16 Paso 7): UN libro sembrado (`demo_paypal.py`), y quien opera su libro
+# también actúa como su dueño (facturar es solo del dueño, y un juez no tiene a quién invitar). Ni la visita (VIEWER).
+PAYPAL_DEMO = os.getenv("PAYPAL_DEMO", "").lower() in {"1", "true", "yes"}
 DEMO_TTL_DAYS = int(os.getenv("DEMO_TTL_DAYS", "7"))
 # Oficinas ya sembradas en espera de un código (la primera carga: ~5–6 s de siembra que el juez no espera).
 DEMO_POOL_SIZE = int(os.getenv("DEMO_POOL_SIZE", "3"))
@@ -95,7 +98,12 @@ def mark_if_demo(firm: Firm) -> None:
 
 # ── Siembra de los libros del visitante ─────────────────────────────────────────────────────────
 
-def seed_visitor_books(session: Session, firm: Firm, owner: User, *, strict: bool = False) -> list[Company]:
+def acts_as_owner(role: Optional[Role]) -> bool:
+    """¿Este rol actúa como el dueño del negocio? Siempre el CLIENT; en `paypal.contabu.com`, también quien opera el libro."""
+    return role == Role.CLIENT or (PAYPAL_DEMO and role in (Role.OWNER, Role.MEMBER))
+
+
+def seed_visitor_books(session: Session, firm: Firm, owner: User, *, strict: bool = False, linked: bool = False) -> list[Company]:
     """Los libros con que arranca la oficina de un visitante del demo.
 
     Llama al generador de datos de Movimientos, con la firma acordada en el 📬 Buzón (3-oct):
@@ -109,7 +117,12 @@ def seed_visitor_books(session: Session, firm: Firm, owner: User, *, strict: boo
     Si el generador todavía no existe (o falla), el visitante recibe un libro vacío como cualquier
     cuenta nueva: el demo queda pobre, pero no roto. Se deja en el log para que se note. Con `strict` (la
     visita y la piscina: nadie está esperando) el error sube, para no guardar una oficina pobre.
+    Con `PAYPAL_DEMO`, el libro de `demo_paypal.py`; `linked` (la visita) lo deja conectado a la cuenta de la app.
     """
+    if PAYPAL_DEMO:
+        import demo_paypal
+        with session.begin_nested():
+            return demo_paypal.seed(session, firm, owner, linked=linked)
     try:
         import demo_data  # área Movimientos
     except ImportError:
@@ -295,7 +308,7 @@ def _new_office(session: Session, owner: User, kind: str, name: str) -> Firm:
     session.flush()
     session.add(FirmMember(firm_id=firm.id, user_id=owner.id, email=owner.email or "", role=FirmRole.OWNER))
     session.add(DemoOffice(firm_id=firm.id, kind=kind, assigned_at=_now() if kind == "live" else None))
-    seed_visitor_books(session, firm, owner, strict=kind != "live")
+    seed_visitor_books(session, firm, owner, strict=kind != "live", linked=kind == "tour")
     return firm
 
 

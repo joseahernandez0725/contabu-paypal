@@ -24,6 +24,7 @@ import hmac
 import json
 import os
 import time
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlencode
 from decimal import Decimal
@@ -37,6 +38,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from auth import client_writable_company, console_company, current_user, owned_company
+from bank import BankConfigError, decrypt_token, encrypt_token
 from db import get_session
 from ingestion import make_fingerprint
 from corrections import record_change, snapshot
@@ -72,20 +74,36 @@ def configured() -> bool:
 
 # ── El cliente ──────────────────────────────────────────────────────────────────────────────────
 
-_token: dict[str, tuple[str, float]] = {}   # entorno → (token, vence); nunca se escribe en logs ni sale al navegador
+_token: dict[str, tuple[str, float]] = {}   # entorno + client id → (token, vence); nunca en logs ni al navegador
+_own_keys: ContextVar[Optional[tuple[str, str]]] = ContextVar("paypal_own_keys", default=None)   # solo esta petición
+
+
+def use_connection(conn: Optional[PayPalConnection]) -> None:
+    """Las llamadas de esta petición usan las llaves de ESTA conexión: las suyas (`own_keys`) o las de la app."""
+    keys = None
+    if conn is not None and conn.client_id and conn.client_secret_enc:
+        try:
+            keys = (conn.client_id, decrypt_token(conn.client_secret_enc))
+        except BankConfigError:
+            raise PayPalError("auth_failed")
+    _own_keys.set(keys)
+
+
+def _keys() -> tuple[str, str]:
+    return _own_keys.get() or (os.getenv("PAYPAL_CLIENT_ID", ""), os.getenv("PAYPAL_CLIENT_SECRET", ""))
 
 
 def _access_token(http: httpx.Client) -> str:
-    env = environment()
-    tok, exp = _token.get(env, ("", 0.0))
+    keys = _keys()
+    slot = f"{environment()}:{keys[0]}"
+    tok, exp = _token.get(slot, ("", 0.0))
     if tok and time.time() < exp - 60:
         return tok
-    r = http.post("/v1/oauth2/token", data={"grant_type": "client_credentials"},
-                  auth=(os.getenv("PAYPAL_CLIENT_ID", ""), os.getenv("PAYPAL_CLIENT_SECRET", "")))
+    r = http.post("/v1/oauth2/token", data={"grant_type": "client_credentials"}, auth=keys)
     if not r.is_success:
         raise PayPalError("auth_failed")
     body = r.json()
-    _token[env] = (body["access_token"], time.time() + int(body.get("expires_in", 300)))
+    _token[slot] = (body["access_token"], time.time() + int(body.get("expires_in", 300)))
     return body["access_token"]
 
 
@@ -258,6 +276,7 @@ def sync(session: Session, conn: PayPalConnection, company: Company) -> dict:
     """Trae lo nuevo de PayPal y lo asienta. Desde el 1 de enero la primera vez; después, desde la última
     sincronización menos 7 días (PayPal tarda hasta 3 horas y un movimiento puede cambiar de estado). Lo ya
     importado se reconoce por su id (`PayPalEntry`): nunca se duplica."""
+    use_connection(conn)
     now = datetime.now(timezone.utc).replace(microsecond=0)
     start = (conn.last_synced_at.replace(tzinfo=timezone.utc) - timedelta(days=7)) if conn.last_synced_at \
         else datetime(now.year, 1, 1, tzinfo=timezone.utc)
@@ -298,6 +317,12 @@ def sync(session: Session, conn: PayPalConnection, company: Company) -> dict:
 # Transfer); si hay varios, o el único ya tiene una categoría de una regla, lo confirma el bookkeeper. Nunca toca una
 # fila escrita a mano ni un mes cerrado.
 
+#
+# Lo mismo con una COMPRA pagada con PayPal y fondeada por el banco (deuda #36): PayPal trae el pago (T00xx que sale) y
+# el banco trae el cargo "PAYPAL *COMERCIO". El gasto se queda en la fila de PayPal, que nombra al comercio; el cargo del
+# banco queda Transfer. Candidato: un cargo con el mismo monto cuya descripción diga PAYPAL, de 1 día antes (PayPal fecha
+# en UTC) a 7 después. Una compra sin cargo se pagó con el saldo: no es un faltante y no se reporta.
+
 WINDOW_DAYS = 7
 VIA_PAYPAL_TRANSFER = "paypal_transfer"
 
@@ -310,14 +335,30 @@ def _withdrawals(session: Session, company_id: int) -> list[Transaction]:
     ).all()
 
 
-def _candidates(session: Session, w: Transaction, taken: set[int]) -> list[Transaction]:
-    rows = session.exec(
-        select(Transaction).where(Transaction.company_id == w.company_id)
-        .where((Transaction.bank_account.is_(None)) | (Transaction.bank_account != ACCOUNT_LABEL))
-        .where(Transaction.is_inflow.is_(True)).where(Transaction.amount == w.amount)
-        .where(Transaction.date >= w.date).where(Transaction.date <= w.date + timedelta(days=WINDOW_DAYS))
+def _purchases(session: Session, company_id: int) -> list[Transaction]:
+    return session.exec(
+        select(Transaction).join(PayPalEntry, PayPalEntry.transaction_id == Transaction.id)
+        .where(PayPalEntry.company_id == company_id).where(PayPalEntry.event_code.startswith("T00"))
+        .where(~PayPalEntry.paypal_id.endswith(":fee")).where(Transaction.is_inflow.is_(False))
         .order_by(Transaction.date)
     ).all()
+
+
+def _movements(session: Session, company_id: int) -> list[tuple[Transaction, str]]:
+    return [(t, "withdrawal") for t in _withdrawals(session, company_id)] + \
+           [(t, "purchase") for t in _purchases(session, company_id)]
+
+
+def _candidates(session: Session, w: Transaction, taken: set[int], kind: str = "withdrawal") -> list[Transaction]:
+    q = select(Transaction).where(Transaction.company_id == w.company_id) \
+        .where((Transaction.bank_account.is_(None)) | (Transaction.bank_account != ACCOUNT_LABEL)) \
+        .where(Transaction.amount == w.amount).where(Transaction.date <= w.date + timedelta(days=WINDOW_DAYS))
+    if kind == "purchase":
+        q = q.where(Transaction.is_inflow.is_(False)).where(Transaction.description.ilike("%PAYPAL%")) \
+            .where(Transaction.date >= w.date - timedelta(days=1))
+    else:
+        q = q.where(Transaction.is_inflow.is_(True)).where(Transaction.date >= w.date)
+    rows = session.exec(q.order_by(Transaction.date)).all()
     return [t for t in rows if t.id not in taken and not month_close.is_locked(session, t)]
 
 
@@ -331,10 +372,10 @@ def match_transfers(session: Session, company: Company) -> dict:
     done = {m.withdrawal_tx_id for m in decided}
     taken = {m.bank_tx_id for m in decided if m.bank_tx_id}
     out = {"auto": 0, "proposals": 0, "unmatched": 0}
-    for w in _withdrawals(session, company.id):
+    for w, kind in _movements(session, company.id):
         if w.id in done:
             continue
-        cands = _candidates(session, w, taken)
+        cands = _candidates(session, w, taken, kind)
         one = cands[0] if len(cands) == 1 else None
         if one is not None and (_is_transfer(one) or (one.account_type is None and one.source != "manual")):
             if not _is_transfer(one):
@@ -348,7 +389,7 @@ def match_transfers(session: Session, company: Company) -> dict:
             out["auto"] += 1
         elif cands:
             out["proposals"] += 1
-        else:
+        elif kind == "withdrawal":
             out["unmatched"] += 1
     session.commit()
     return out
@@ -367,16 +408,18 @@ def transfers_view(session: Session, company_id: int) -> dict:
         select(PayPalTransferMatch).where(PayPalTransferMatch.company_id == company_id)).all()}
     taken = {m.bank_tx_id for m in decided.values() if m.bank_tx_id}
     matched, proposals, unmatched = [], [], []
-    for w in _withdrawals(session, company_id):
+    for w, kind in _movements(session, company_id):
         m = decided.get(w.id)
         if m is not None:
             if m.status != "rejected" and m.bank_tx_id:
                 b = session.get(Transaction, m.bank_tx_id)
-                matched.append({"withdrawal": _brief(w), "deposit": _brief(b) if b else None, "status": m.status})
+                matched.append({"kind": kind, "withdrawal": _brief(w), "deposit": _brief(b) if b else None, "status": m.status})
             continue
-        cands = _candidates(session, w, taken)
-        (proposals if cands else unmatched).append(
-            {"withdrawal": _brief(w), "candidates": [_brief(c) for c in cands]} if cands else {"withdrawal": _brief(w)})
+        cands = _candidates(session, w, taken, kind)
+        if cands:
+            proposals.append({"kind": kind, "withdrawal": _brief(w), "candidates": [_brief(c) for c in cands]})
+        elif kind == "withdrawal":
+            unmatched.append({"kind": kind, "withdrawal": _brief(w)})
     return {"matched": matched, "proposals": proposals, "unmatched": unmatched, "window_days": WINDOW_DAYS}
 
 
@@ -425,6 +468,7 @@ def paypal_disconnect(company_id: int, user: User = Depends(current_user), sessi
     owned_company(company_id, user, session, write=True)
     conn = _conn(session, company_id)
     if conn is not None:
+        _drop_webhook(conn)
         session.delete(conn)
         session.commit()
     return {"connected": False}
@@ -455,13 +499,14 @@ def paypal_transfer_confirm(company_id: int, withdrawal_id: int, payload: Transf
     (`source="manual"`: ninguna regla lo vuelve a tocar). Un mes cerrado responde 409 (el guardián)."""
     owned_company(company_id, user, session, write=True)
     w = session.get(Transaction, withdrawal_id)
-    if w is None or w.company_id != company_id or w.id not in {t.id for t in _withdrawals(session, company_id)}:
+    kind = next((k for t, k in _movements(session, company_id) if w is not None and t.id == w.id), None)
+    if w is None or w.company_id != company_id or kind is None:
         raise HTTPException(status_code=404, detail="withdrawal not found")
     if session.exec(select(PayPalTransferMatch).where(PayPalTransferMatch.withdrawal_tx_id == w.id)).first():
         raise HTTPException(status_code=409, detail="already decided")
     taken = {m.bank_tx_id for m in session.exec(select(PayPalTransferMatch)
                                                .where(PayPalTransferMatch.company_id == company_id)).all() if m.bank_tx_id}
-    b = next((c for c in _candidates(session, w, taken) if c.id == payload.bank_tx_id), None)
+    b = next((c for c in _candidates(session, w, taken, kind) if c.id == payload.bank_tx_id), None)
     if b is None:
         raise HTTPException(status_code=422, detail="not a candidate")
     before = snapshot(b)
@@ -656,11 +701,129 @@ def paypal_oauth(payload: OAuthReturn, user: User = Depends(current_user), sessi
     conn.merchant_id = who["payer_id"]
     ensure_accounts(session, company)
     session.commit()
+    ensure_webhook(session, conn)
     try:
         counts = sync(session, conn, company)
     except PayPalError as e:
         _fail(e)
     return {**_status(session, conn), "imported": counts, "email": who["email"], "company_id": company.id}
+
+
+# ── Las credenciales propias (Jose, 2-nov) ───────────────────────────────────────────────────────
+# Quien quiera probar con SU cuenta pega el client id y el secret de su app de SANDBOX. Es el único camino sin ser partner
+# aprobado (`FASE 16.B.md` §2). Las llaves se prueban contra PayPal antes de guardar nada; el secret va cifrado.
+
+class OwnKeys(BaseModel):
+    client_id: str
+    client_secret: str
+
+
+def _account_of_keys(client_id: str, client_secret: str) -> str:
+    """El id de la cuenta que manejan estas llaves, por su saldo. Llaves malas → `auth_failed`; sin Transaction search → `app_permissions`."""
+    try:
+        with httpx.Client(base_url=_BASES[environment()], timeout=30) as http:
+            r = http.post("/v1/oauth2/token", data={"grant_type": "client_credentials"}, auth=(client_id, client_secret))
+            if not r.is_success:
+                raise PayPalError("auth_failed")
+            bal = http.get("/v1/reporting/balances", params={"currency_code": "USD"},
+                           headers={"Authorization": f"Bearer {r.json()['access_token']}"})
+    except httpx.HTTPError:
+        raise PayPalError("network")
+    account = bal.json().get("account_id") if bal.is_success else None
+    if not account:
+        raise PayPalError("app_permissions")
+    return account
+
+
+@router.post("/api/companies/{company_id}/paypal/credentials")
+def paypal_credentials(company_id: int, payload: OwnKeys, user: User = Depends(current_user),
+                       session: Session = Depends(get_session)):
+    """Conecta este libro con las llaves de la app de sandbox de quien lo usa, e importa su historial."""
+    company = client_writable_company(company_id, user, session)
+    if environment() != "sandbox":
+        raise HTTPException(status_code=503, detail={"code": "paypal_not_configured"})
+    client_id, secret = payload.client_id.strip(), payload.client_secret.strip()
+    if not client_id or not secret or len(client_id) > 200 or len(secret) > 200:
+        raise HTTPException(status_code=422, detail={"code": "paypal_auth_failed"})
+    try:
+        account = _account_of_keys(client_id, secret)
+    except PayPalError as e:
+        raise HTTPException(status_code=422 if e.code in ("auth_failed", "app_permissions") else 502,
+                            detail={"code": "paypal_" + e.code})
+    other = session.exec(select(PayPalConnection).where(PayPalConnection.merchant_id == account)
+                         .where(PayPalConnection.company_id != company.id)).first()
+    if other is not None:
+        raise HTTPException(status_code=409, detail={"code": "paypal_in_use", "company_id": company.id})
+    try:
+        enc = encrypt_token(secret)
+    except BankConfigError:
+        raise HTTPException(status_code=503, detail={"code": "paypal_not_configured"})
+    conn = _conn(session, company.id)
+    if conn is None:
+        conn = PayPalConnection(company_id=company.id, connected_by_user_id=user.id)
+        session.add(conn)
+    conn.mode, conn.environment, conn.merchant_id = "own_keys", environment(), account
+    conn.client_id, conn.client_secret_enc, conn.webhook_id = client_id, enc, None
+    ensure_accounts(session, company)
+    session.commit()
+    ensure_webhook(session, conn)
+    try:
+        counts = sync(session, conn, company)
+    except PayPalError as e:
+        _fail(e)
+    return {**_status(session, conn), "imported": counts, "company_id": company.id}
+
+
+# ── El webhook (deuda #37) ───────────────────────────────────────────────────────────────────────
+# Sin `PAYPAL_WEBHOOK_BASE_URL` (en local) no se suscribe nada y sigue la consulta. Cada conexión tiene su dirección: una
+# app de otra cuenta firma con SU webhook, y la firma se verifica con las llaves de esa misma conexión.
+
+WEBHOOK_EVENTS = ("INVOICING.INVOICE.PAID", "INVOICING.INVOICE.REFUNDED", "INVOICING.INVOICE.CANCELLED")
+
+
+def ensure_webhook(session: Session, conn: PayPalConnection) -> None:
+    """Suscribe el webhook de esta conexión. Si falla, se registra y la consulta sigue de respaldo. Con commit."""
+    base = (os.getenv("PAYPAL_WEBHOOK_BASE_URL") or "").strip().rstrip("/")
+    if not base or conn.webhook_id:
+        return
+    use_connection(conn)
+    url = f"{base}/api/paypal/webhook/{conn.id}"
+    try:
+        try:
+            conn.webhook_id = api("POST", "/v1/notifications/webhooks", json={
+                "url": url, "event_types": [{"name": n} for n in WEBHOOK_EVENTS]}).get("id")
+        except PayPalError as e:
+            if e.code != "WEBHOOK_URL_ALREADY_EXISTS":
+                raise
+            hooks = api("GET", "/v1/notifications/webhooks").get("webhooks") or []
+            conn.webhook_id = next((h.get("id") for h in hooks if h.get("url") == url), None)
+    except PayPalError as e:
+        log.warning("[paypal webhook] conexión %s: no se suscribió (%s); sigue la consulta", conn.id, e.code)
+        return
+    session.add(conn)
+    session.commit()
+
+
+def _drop_webhook(conn: PayPalConnection) -> None:
+    if not conn.webhook_id:
+        return
+    try:
+        use_connection(conn)
+        api("DELETE", f"/v1/notifications/webhooks/{conn.webhook_id}")
+    except PayPalError as e:
+        log.warning("[paypal webhook] conexión %s: no se borró (%s)", conn.id, e.code)
+
+
+def webhook_is_genuine(conn: PayPalConnection, headers, event: dict) -> bool:
+    """Le pregunta a PayPal si este aviso es suyo y de este webhook. Error de PayPal → `PayPalError` (que reintente)."""
+    if not conn.webhook_id:
+        return False
+    use_connection(conn)
+    return api("POST", "/v1/notifications/verify-webhook-signature", json={
+        "auth_algo": headers.get("paypal-auth-algo"), "cert_url": headers.get("paypal-cert-url"),
+        "transmission_id": headers.get("paypal-transmission-id"), "transmission_sig": headers.get("paypal-transmission-sig"),
+        "transmission_time": headers.get("paypal-transmission-time"), "webhook_id": conn.webhook_id,
+        "webhook_event": event}).get("verification_status") == "SUCCESS"
 
 
 @router.get("/api/owner/companies/{company_id}/accounts")
@@ -672,8 +835,9 @@ def owner_accounts(company_id: int, user: User = Depends(current_user), session:
                          .order_by(BankConnection.id)).all()
     conn = _conn(session, company_id)
     balance = None
-    if conn is not None and conn.mode == "first_party" and configured():
+    if conn is not None and (conn.mode == "own_keys" or (conn.mode == "first_party" and configured())):
         try:   # el saldo de la cuenta conectada (✅ /v1/reporting/balances); si PayPal no responde, no se muestra
+            use_connection(conn)
             b = (api("GET", "/v1/reporting/balances", params={"currency_code": "USD"}).get("balances") or [{}])[0]
             balance = {"total": (b.get("total_balance") or {}).get("value"),
                        "available": (b.get("available_balance") or {}).get("value")}

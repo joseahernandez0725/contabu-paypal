@@ -1436,6 +1436,18 @@ async function paypalCall(path: string, method = "GET"): Promise<PayPalStatus> {
 export const getPayPal = () => paypalCall("");
 export const syncPayPal = () => paypalCall("/sync", "POST");
 export const disconnectPayPal = () => paypalCall("", "DELETE");
+/** Conectar con las llaves de SU app de sandbox. El secret solo viaja aquí: el backend nunca lo devuelve. */
+export async function connectPayPalKeys(clientId: string, clientSecret: string): Promise<PayPalStatus> {
+  const res = await fetch(`${API}/api/companies/${cid()}/paypal/credentials`, {
+    method: "POST", headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail?.code ?? `paypal_http_${res.status}`);
+  }
+  return res.json();
+}
 
 /** La ventana Cuentas del dueño: sus bancos (Plaid) y su PayPal. Sin tokens ni transacciones. */
 export interface OwnerAccounts {
@@ -1450,10 +1462,11 @@ export async function getOwnerAccounts(): Promise<OwnerAccounts> {
 
 // --- Paso 4: el retiro de PayPal ↔ su depósito en el banco ----------------------------------------------------------
 export interface BriefTx { id: number; date: string; description: string; amount: string; bank_account: string | null; account_type: string | null; category: string | null }
+export type PayPalMovementKind = "withdrawal" | "purchase";
 export interface PayPalTransfers {
-  matched: { withdrawal: BriefTx; deposit: BriefTx | null; status: "auto" | "confirmed" }[];
-  proposals: { withdrawal: BriefTx; candidates: BriefTx[] }[];
-  unmatched: { withdrawal: BriefTx }[];
+  matched: { kind: PayPalMovementKind; withdrawal: BriefTx; deposit: BriefTx | null; status: "auto" | "confirmed" }[];
+  proposals: { kind: PayPalMovementKind; withdrawal: BriefTx; candidates: BriefTx[] }[];
+  unmatched: { kind: PayPalMovementKind; withdrawal: BriefTx }[];
   window_days: number;
 }
 async function transfersCall(path: string, method = "GET", body?: unknown): Promise<PayPalTransfers> {

@@ -1863,6 +1863,8 @@
     "preview": {
       "title": "Vista previa:",
       "body": "así ve el portal el dueño del negocio. Solo lectura.",
+      "actingTitle": "Portal del dueño:",
+      "actingBody": "en este demo actúas como el dueño del negocio; la consola es la del bookkeeper.",
       "exit": "Volver a la consola",
       "disabled": "Solo lectura en la vista previa"
     },
@@ -1938,14 +1940,23 @@
         "paypal_auth_failed": "PayPal rechazó las credenciales.",
         "paypal_network": "No se pudo conectar con PayPal. Inténtalo de nuevo.",
         "paypal_not_connected": "PayPal no está conectado.",
+        "paypal_app_permissions": "Esas credenciales no tienen acceso a los movimientos: activa Transaction search e Invoicing en tu app de PayPal.",
+        "paypal_in_use": "Esa cuenta de PayPal ya está conectada a otro libro.",
         "other": "PayPal devolvió un error. Inténtalo de nuevo."
+      },
+      "keys": {
+        "toggle": "Probar con mi cuenta de sandbox",
+        "help": "En developer.paypal.com → Apps & Credentials → Sandbox, abre tu app (con Invoicing y Transaction search activos) y copia sus credenciales. Solo sandbox; el secret se guarda cifrado.",
+        "clientId": "Client ID",
+        "secret": "Secret",
+        "submit": "Conectar mi cuenta"
       },
       "connectWith": "Conectar con",
       "heroTitle": "Conecta tu cuenta de PayPal para negocios",
       "heroBody": "Tus ventas, comisiones y reembolsos de PayPal llegan solos a tu contabilidad, y podrás emitir facturas y cobrarlas con tarjeta o PayPal.",
       "connectedNotice": "PayPal conectado ({{email}}).",
       "returnCancelled": "Se canceló la conexión con PayPal.",
-      "err_other_account": "Iniciaste sesión en PayPal como {{email}}. En este demo solo se puede conectar la cuenta de prueba del negocio; en producción, PayPal te pediría autorizar el acceso a tu propia cuenta.",
+      "err_other_account": "Iniciaste sesión en PayPal como {{email}}. Para probar con tu cuenta, usa \"Probar con mi cuenta de sandbox\" e ingresa las credenciales de tu app; en producción, PayPal te pediría autorizar el acceso a tu propia cuenta.",
       "openAccount": "Abrir una cuenta para negocios",
       "hero": {
         "needBusiness": "Para emitir facturas necesitas una cuenta de PayPal para negocios.",
@@ -1962,9 +1973,10 @@
       "title": "Transferencias a cuentas bancarias",
       "summary": "{{matched}} emparejadas · {{proposals}} por confirmar · {{unmatched}} sin depósito",
       "rematch": "Buscar depósitos",
-      "help": "Cada retiro de PayPal se empareja con su depósito en el banco (mismo monto, hasta {{days}} días después) y ambos quedan fuera del P&L, para que la venta no se registre dos veces.",
+      "help": "Cada retiro de PayPal se empareja con su depósito en el banco (mismo monto, hasta {{days}} días después) y ambos quedan fuera del P&L, para que la venta no se registre dos veces. Una compra pagada con PayPal se empareja con su cargo en el banco: el gasto queda solo en PayPal.",
       "toConfirm": "Por confirmar:",
       "withdrawal": "retiro de {{amount}} del {{date}}",
+      "purchase": "compra de {{amount}} del {{date}} (el cargo del banco queda como transferencia)",
       "confirm": "Confirmar",
       "none": "Ninguno corresponde",
       "auto": "emparejada automáticamente",

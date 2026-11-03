@@ -747,13 +747,17 @@ class PayPalConnection(SQLModel, table=True):
 
     `mode`: "first_party" = las credenciales de la app de ContaBu sobre UNA cuenta de prueba (el demo; solo en
     sandbox) · "partner" = el negocio dio permiso por Partner Referrals (producción; exige ser partner aprobado, ver
-    `FASE 16.B.md` §2 y §8). El resto del código no distingue. Ningún secreto vive aquí.
+    `FASE 16.B.md` §2 y §8) · "own_keys" = el negocio pegó las credenciales de SU app de sandbox (2-nov). El resto del
+    código no distingue. 🔒 `client_secret_enc` va CIFRADO (Fernet, `BANK_TOKEN_KEY`) y nunca sale al navegador.
     """
     id: Optional[int] = Field(default=None, primary_key=True)
     company_id: int = Field(foreign_key="company.id", index=True, unique=True)   # ON DELETE CASCADE (migración)
     mode: str = Field(default="first_party")
     environment: str = Field(default="sandbox")
     merchant_id: Optional[str] = Field(default=None)       # el del negocio en modo partner
+    client_id: Optional[str] = Field(default=None)         # own_keys: el client id de su app
+    client_secret_enc: Optional[str] = Field(default=None) # own_keys: su secret, cifrado
+    webhook_id: Optional[str] = Field(default=None)        # el webhook suscrito para esta conexión (verifica la firma)
     status: str = Field(default="active")                  # active | error
     last_error: Optional[str] = Field(default=None)
     last_synced_at: Optional[datetime] = Field(default=None)

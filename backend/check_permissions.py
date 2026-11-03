@@ -97,6 +97,7 @@ CLIENT_ALLOWED: set[tuple[str, str]] = {
     ("GET", "/api/owner/companies/{company_id}"),                  # portada del portal: negocio, quién lo lleva, meses cerrados
     ("GET", "/api/owner/companies/{company_id}/accounts"),         # Cuentas: sus bancos y su PayPal (nombre, últimos 4, estado)
     ("POST", "/api/companies/{company_id}/paypal/authorize"),      # el enlace para iniciar sesión en PayPal (1-nov)
+    ("POST", "/api/companies/{company_id}/paypal/credentials"),    # conectar con las llaves de SU app de sandbox (2-nov)
     # Vincular SU banco desde el portal (Jose, 1-nov): sus credenciales en Plaid, como subir su extracto. Reparar,
     # sincronizar y quitar un banco siguen siendo del bookkeeper.
     ("POST", "/api/companies/{company_id}/bank-connections/link-token"),
@@ -127,6 +128,7 @@ OWNER_ONLY: set[tuple[str, str]] = {
 # Rutas que NO se prueban porque no pertenecen al modelo de acceso por libro.
 SKIP: set[tuple[str, str]] = {
     ("POST", "/api/stripe/webhook"),   # lo llama Stripe con su firma, no un usuario
+    ("POST", "/api/paypal/webhook/{connection_id}"),   # lo llama PayPal; check_paypal prueba que sin firma válida → 400
     ("POST", "/api/companies"),        # crea un libro NUEVO: no hay `company_id` que validar (Paso 4)
 }
 
@@ -190,6 +192,7 @@ BODIES: dict[tuple[str, str], dict] = {
     ("POST", "/api/owner/companies/{company_id}/invoices/voice"): {"text": "factura de prueba por 10 dólares"},
     # Log in with PayPal (1-nov): un `state` inventado → 400 (la firma no cuadra), nunca un 2xx.
     ("POST", "/api/paypal/oauth"): {"code": "permcheck", "state": "permcheck.forged"},
+    ("POST", "/api/companies/{company_id}/paypal/credentials"): {"client_id": "", "client_secret": ""},
     # PayPal (FASE 16 Paso 4): confirmar el depósito de un retiro es del bookkeeper. Retiro 999999: un 404 también rechaza.
     ("POST", "/api/companies/{company_id}/paypal/transfers/{withdrawal_id}/confirm"): {"bank_tx_id": 999999},
     # El dueño en la consola (FASE 16, 31-oct): invitarlo es del bookkeeper, nunca del propio cliente.

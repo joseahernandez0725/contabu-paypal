@@ -1734,6 +1734,8 @@
     "preview": {
       "title": "Preview:",
       "body": "this is the business owner's view. Read-only.",
+      "actingTitle": "Owner portal:",
+      "actingBody": "in this demo you act as the business owner; the console is the bookkeeper's.",
       "exit": "Back to the console",
       "disabled": "Read-only in preview"
     },
@@ -1809,14 +1811,23 @@
         "paypal_auth_failed": "PayPal rejected the credentials.",
         "paypal_network": "Couldn't reach PayPal. Please try again.",
         "paypal_not_connected": "PayPal isn't connected.",
+        "paypal_app_permissions": "Those credentials can't read transactions: turn on Transaction search and Invoicing in your PayPal app.",
+        "paypal_in_use": "That PayPal account is already connected to another book.",
         "other": "PayPal returned an error. Please try again."
+      },
+      "keys": {
+        "toggle": "Try with my sandbox account",
+        "help": "At developer.paypal.com → Apps & Credentials → Sandbox, open your app (with Invoicing and Transaction search on) and copy its credentials. Sandbox only; the secret is stored encrypted.",
+        "clientId": "Client ID",
+        "secret": "Secret",
+        "submit": "Connect my account"
       },
       "connectWith": "Connect with",
       "heroTitle": "Connect your PayPal business account",
       "heroBody": "Your PayPal sales, fees and refunds flow into your books automatically, and you can issue invoices and get paid by card or PayPal.",
       "connectedNotice": "PayPal connected ({{email}}).",
       "returnCancelled": "The PayPal connection was cancelled.",
-      "err_other_account": "You signed in to PayPal as {{email}}. This demo can only connect the business's test account; in production, PayPal would ask you to authorize access to your own account.",
+      "err_other_account": "You signed in to PayPal as {{email}}. To try your own account, use \"Try with my sandbox account\" and enter your app's credentials; in production, PayPal would ask you to authorize access to your own account.",
       "openAccount": "Open a business account",
       "hero": {
         "needBusiness": "To issue invoices you need a PayPal business account.",
@@ -1833,9 +1844,10 @@
       "title": "Transfers to bank accounts",
       "summary": "{{matched}} matched · {{proposals}} to confirm · {{unmatched}} without deposit",
       "rematch": "Find deposits",
-      "help": "Each PayPal withdrawal is matched to its bank deposit (same amount, up to {{days}} days later) and both stay off the P&L, so the sale isn't recorded twice.",
+      "help": "Each PayPal withdrawal is matched to its bank deposit (same amount, up to {{days}} days later) and both stay off the P&L, so the sale isn't recorded twice. A purchase paid with PayPal is matched to its bank charge: the expense stays only on PayPal.",
       "toConfirm": "To confirm:",
       "withdrawal": "{{amount}} withdrawal on {{date}}",
+      "purchase": "{{amount}} purchase on {{date}} (the bank charge becomes a transfer)",
       "confirm": "Confirm",
       "none": "None of these",
       "auto": "matched automatically",

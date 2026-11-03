@@ -42,7 +42,7 @@ export default function PayPalTransfers({ refreshKey }: { refreshKey: number }) 
         <div key={p.withdrawal.id} className="rounded-lg border border-amber-200 bg-amber-50/50 p-2 space-y-1.5">
           <div className="text-xs text-slate-700">
             <span className="font-semibold">{t("owner.transfers.toConfirm")}</span>{" "}
-            {t("owner.transfers.withdrawal", { amount: money(Number(p.withdrawal.amount)), date: day(p.withdrawal.date) })}
+            {t(`owner.transfers.${p.kind}`, { amount: money(Number(p.withdrawal.amount)), date: day(p.withdrawal.date) })}
           </div>
           {p.candidates.map((c) => (
             <label key={c.id} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
@@ -71,7 +71,7 @@ export default function PayPalTransfers({ refreshKey }: { refreshKey: number }) 
           {d.matched.map((m) => (
             <li key={m.withdrawal.id} className="flex flex-wrap gap-x-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 self-center" />
-              <span>{t("owner.transfers.withdrawal", { amount: money(Number(m.withdrawal.amount)), date: day(m.withdrawal.date) })}</span>
+              <span>{t(`owner.transfers.${m.kind}`, { amount: money(Number(m.withdrawal.amount)), date: day(m.withdrawal.date) })}</span>
               <span className="text-slate-400">→</span>
               <span className="truncate">{m.deposit ? `${day(m.deposit.date)} · ${m.deposit.description}` : "—"}</span>
               <span className="text-slate-400">{m.status === "auto" ? t("owner.transfers.auto") : t("owner.transfers.confirmed")}</span>

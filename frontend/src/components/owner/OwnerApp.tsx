@@ -63,8 +63,8 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
       <div className="flex-1 min-w-0 flex flex-col">
         {onExitPreview && (
           <div className="bg-amber-50 border-b border-amber-200 px-3 sm:px-4 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-amber-900">
-            <span className="font-semibold">{t("owner.preview.title")}</span>
-            <span className="text-amber-800">{t("owner.preview.body")}</span>
+            <span className="font-semibold">{t(home && !home.preview ? "owner.preview.actingTitle" : "owner.preview.title")}</span>
+            <span className="text-amber-800">{t(home && !home.preview ? "owner.preview.actingBody" : "owner.preview.body")}</span>
             <button onClick={onExitPreview}
                     className="ms-auto px-2.5 py-1 rounded-lg text-xs font-semibold border border-amber-300 bg-white hover:bg-amber-100">
               {t("owner.preview.exit")}

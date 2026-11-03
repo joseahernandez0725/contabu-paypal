@@ -20,15 +20,16 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import case, func
 from sqlmodel import Session, select
 
+import demo
 import paypal
 from auth import client_writable_company, current_user, effective_role, owned_company
 from db import get_session
-from models import AccountType, Company, Invoice, InvoiceCustomer, PayPalConnection, PayPalEntry, Role, User
+from models import AccountType, Company, Invoice, InvoiceCustomer, PayPalConnection, PayPalEntry, User
 from rules import load_rules
 
 router = APIRouter()
@@ -40,9 +41,10 @@ MAX_AMOUNT = Decimal("100000")
 
 
 def _owner_only(company_id: int, user: User, session: Session) -> Company:
-    """Crear o enviar una factura: SOLO el dueño del negocio (rol CLIENT). El bookkeeper, ni en la vista previa."""
+    """Crear o enviar una factura: SOLO el dueño del negocio (rol CLIENT). El bookkeeper, ni en la vista previa.
+    La excepción es `paypal.contabu.com` (`demo.acts_as_owner`)."""
     company = owned_company(company_id, user, session)
-    if effective_role(company, user, session) != Role.CLIENT:
+    if not demo.acts_as_owner(effective_role(company, user, session)):
         raise HTTPException(status_code=403, detail="owner only")
     return company
 
@@ -53,6 +55,18 @@ def _fail(e: paypal.PayPalError):
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _connect(session: Session, company_id: int) -> PayPalConnection:
+    """Las llamadas a PayPal de esta petición usan las llaves de ESTE libro. Sin conexión, ninguna: 409."""
+    conn = session.exec(select(PayPalConnection).where(PayPalConnection.company_id == company_id)).first()
+    if conn is None:
+        raise HTTPException(status_code=409, detail={"code": "paypal_not_connected"})
+    try:
+        paypal.use_connection(conn)
+    except paypal.PayPalError as e:
+        _fail(e)
+    return conn
 
 
 # ── Clientes ────────────────────────────────────────────────────────────────────────────────────
@@ -157,8 +171,7 @@ def create_invoice(company_id: int, payload: InvoiceIn, user: User = Depends(cur
                    session: Session = Depends(get_session)):
     """Crea la factura como BORRADOR en PayPal (no se envía nada todavía). Requiere PayPal conectado."""
     company = _owner_only(company_id, user, session)
-    if session.exec(select(PayPalConnection).where(PayPalConnection.company_id == company_id)).first() is None:
-        raise HTTPException(status_code=409, detail={"code": "paypal_not_connected"})
+    _connect(session, company_id)
     c = session.get(InvoiceCustomer, payload.customer_id)
     if c is None or c.company_id != company_id:
         raise HTTPException(status_code=404, detail="customer not found")
@@ -196,6 +209,7 @@ def send_invoice(company_id: int, invoice_id: int, user: User = Depends(current_
         raise HTTPException(status_code=404, detail="invoice not found")
     if inv.status != "DRAFT":
         raise HTTPException(status_code=409, detail="not a draft")
+    _connect(session, company_id)
     try:
         paypal.api("POST", f"/v2/invoicing/invoices/{inv.paypal_invoice_id}/send",
                    json={"send_to_recipient": True, "send_to_invoicer": False})
@@ -244,19 +258,51 @@ def refresh_invoices(company_id: int, user: User = Depends(current_user), sessio
     Jose, 1-nov). La puede pedir el dueño o el bookkeeper; un VIEWER no."""
     company = client_writable_company(company_id, user, session)
     invs = session.exec(select(Invoice).where(Invoice.company_id == company_id).where(Invoice.status.in_(OPEN))).all()
+    if invs:
+        _connect(session, company_id)
     changed = 0
     for inv in invs:
         try:
             res = paypal.api("GET", f"/v2/invoicing/invoices/{inv.paypal_invoice_id}")
         except paypal.PayPalError as e:
             _fail(e)
-        status = res.get("status") or inv.status
-        if status != inv.status:
-            changed += 1
-        inv.status, inv.last_checked_at = status, _now()
-        if status == "PAID":
-            register_payment(session, company, inv, res)
-            inv.paid_at = inv.paid_at or _now()
-        session.add(inv)
+        changed += _apply_state(session, company, inv, res)
     session.commit()
     return {**_view(session, company_id), "changed": changed}
+
+
+def _apply_state(session: Session, company: Company, inv: Invoice, res: dict) -> bool:
+    """Deja la factura como dice PayPal y, si está PAGADA del todo, asienta el cobro. Sin commit. ¿Cambió el estado?"""
+    status = res.get("status") or inv.status
+    changed = status != inv.status
+    inv.status, inv.last_checked_at = status, _now()
+    if status == "PAID":
+        register_payment(session, company, inv, res)
+        inv.paid_at = inv.paid_at or _now()
+    session.add(inv)
+    return changed
+
+
+@router.post("/api/paypal/webhook/{connection_id}")
+def paypal_webhook(connection_id: int, event: dict, request: Request, session: Session = Depends(get_session)):
+    """El aviso de PayPal (PÚBLICO: lo llama PayPal; se verifica su firma con PayPal, deuda #37). No se le cree al
+    aviso: `INVOICING.INVOICE.PAID` también salta con pagos parciales o pendientes, así que el estado y los montos se
+    leen de la factura. Repetido no duplica (`register_payment`). Error de PayPal → 502, y PayPal reintenta."""
+    conn = session.get(PayPalConnection, connection_id)
+    if conn is None:
+        raise HTTPException(status_code=404, detail="connection not found")
+    try:
+        if not paypal.webhook_is_genuine(conn, request.headers, event):
+            raise HTTPException(status_code=400, detail="bad signature")
+        resource = event.get("resource") or {}
+        invoice_id = (resource.get("invoice") or {}).get("id") or resource.get("id")
+        inv = session.exec(select(Invoice).where(Invoice.company_id == conn.company_id)
+                           .where(Invoice.paypal_invoice_id == invoice_id)).first() if invoice_id else None
+        if inv is None or not str(event.get("event_type") or "").startswith("INVOICING.INVOICE."):
+            return {"ok": True, "ignored": True}
+        res = paypal.api("GET", f"/v2/invoicing/invoices/{inv.paypal_invoice_id}")
+    except paypal.PayPalError as e:
+        _fail(e)
+    _apply_state(session, session.get(Company, conn.company_id), inv, res)
+    session.commit()
+    return {"ok": True}
