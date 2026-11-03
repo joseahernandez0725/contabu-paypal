@@ -1970,6 +1970,28 @@
           "body": "The sale at gross and the fee as an expense, ready for your bookkeeper."
         }
       }
+    },
+    "intro": {
+      "kicker": "ContaBu + PayPal · sandbox",
+      "title": "Get paid by card. Books that keep up on their own.",
+      "lead": "Meet Rivera HVAC, a small business that bills its customers through PayPal. The owner and the bookkeeper work in the same set of books.",
+      "before": "PayPal without ContaBu",
+      "after": "PayPal with ContaBu",
+      "problem": {
+        "net": "PayPal pays out net of fees, so the books need the gross sale and the fee, worked out by hand.",
+        "deposit": "The withdrawal lands at the bank looking like income: the sale is easy to count twice.",
+        "purchase": "A purchase paid with PayPal shows up in PayPal and again as a bank charge.",
+        "owner": "The owner sends invoices in one place and waits for the bookkeeper's report to see where the money went."
+      },
+      "solution": {
+        "net": "Each sale is recorded at gross, with the PayPal fee as a separate expense; refunds reduce income.",
+        "deposit": "Each withdrawal is matched to its bank deposit and stays off the P&L.",
+        "purchase": "Each purchase is matched to its bank charge, so the expense counts once.",
+        "owner": "The owner invoices from the portal (customers pay by card) and sees every period the bookkeeper closes."
+      },
+      "sandbox": "Everything runs in PayPal's sandbox. No real money moves.",
+      "start": "Start the tour",
+      "live": "Try it with my own PayPal sandbox"
     }
   }
 }

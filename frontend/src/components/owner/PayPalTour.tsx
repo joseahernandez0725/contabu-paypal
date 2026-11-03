@@ -19,7 +19,9 @@ const STOPS: Stop[] = [
 ];
 const HIDDEN_KEY = "contabu.paypalTour.hidden.v1";
 
+// En la visita guiada no se recuerda: cada juez empieza con la pantalla completa (Jose, 3-nov).
 function readHidden(): boolean {
+  if (inTour()) return false;
   try { return localStorage.getItem(HIDDEN_KEY) === "1"; } catch { return false; }
 }
 

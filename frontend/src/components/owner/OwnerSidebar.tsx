@@ -4,6 +4,7 @@ import { signOut } from "firebase/auth";
 import { auth } from "../../firebase";
 import LanguageSwitcher from "../LanguageSwitcher";
 import type { Company } from "../../types";
+import { PAYPAL_DEMO } from "../../demo";
 
 // LA BARRA LATERAL DEL DUEÑO (FASE 16, 31-oct, pedido de Jose: "el mismo diseño del panel desplegable").
 // Copia el DISEÑO de `Sidebar.tsx` (Firm): riel de 48 px que se expande a 240 px al acercar el mouse, encima del
@@ -141,7 +142,8 @@ export default function OwnerSidebar({ view, onNavigate, company, companies, onS
 
       <div className="shrink-0 h-12 border-t border-slate-200 px-3 flex items-center gap-2 overflow-hidden">
         {expanded && <LanguageSwitcher />}
-        {!preview && (
+        {/* En `paypal.contabu.com` el portal es la puerta de entrada, también para quien lo ve en vista previa (Jose, 3-nov). */}
+        {(!preview || PAYPAL_DEMO) && (
           <button onClick={() => signOut(auth)} aria-label={t("login.logout")} title={t("login.logout")}
                   className={`flex items-center gap-1.5 text-sm text-slate-500 hover:text-rose-500 rounded-lg whitespace-nowrap ${expanded ? "ms-auto px-2 py-1" : ""}`}>
             <span className="relative size-8 shrink-0 rounded-full flex items-center justify-center hover:bg-slate-100 hover:text-rose-500">

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { inTour } from "../../demo";
 
 // LA BIENVENIDA DE `paypal.contabu.com` (FASE 16 Paso 7, Jose 2-nov): la herramienta que ContaBu le da al DUEÑO para
 // cobrar con tarjeta. Se lee en tres pasos —factura, pago con tarjeta, en los libros— y lleva a Cobros. Se puede ocultar.
@@ -7,7 +8,9 @@ import { useTranslation } from "react-i18next";
 const HIDDEN_KEY = "contabu.cardWelcome.hidden.v1";
 const STEPS = ["invoice", "card", "books"] as const;
 
+// En la visita guiada no se recuerda: cada juez empieza con la pantalla completa (Jose, 3-nov).
 function readHidden(): boolean {
+  if (inTour()) return false;
   try { return localStorage.getItem(HIDDEN_KEY) === "1"; } catch { return false; }
 }
 

@@ -8,7 +8,8 @@ import ConnectPayPal from "./ConnectPayPal";
 import { monthLabel } from "./MonthCloseSection";
 import { getInvoices, money } from "../../api";
 import type { Company } from "../../types";
-import { PAYPAL_DEMO } from "../../demo";
+import { inTour, PAYPAL_DEMO } from "../../demo";
+import PayPalIntro from "./PayPalIntro";
 import type { View } from "../Sidebar";
 import PayPalTour from "./PayPalTour";
 import CardPaymentsWelcome from "./CardPaymentsWelcome";
@@ -92,6 +93,7 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
         </header>
 
         <main className="flex-1 w-full px-3 sm:px-4 py-3 space-y-3">
+          {PAYPAL_DEMO && inTour() && <PayPalIntro />}
           {PAYPAL_DEMO && home && view === "summary" && <CardPaymentsWelcome onInvoices={() => setView("invoices")} />}
           {PAYPAL_DEMO && home && <PayPalTour ownerView={view} onOwner={setView} onConsole={onOpenConsole} />}
           {notice && (

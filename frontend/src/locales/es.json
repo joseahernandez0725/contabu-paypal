@@ -2099,6 +2099,28 @@
           "body": "La venta por el bruto y la comisión como gasto, lista para tu bookkeeper."
         }
       }
+    },
+    "intro": {
+      "kicker": "ContaBu + PayPal · sandbox",
+      "title": "Cobra con tarjeta. Una contabilidad que se mantiene al día sola.",
+      "lead": "Conoce a Rivera HVAC, un pequeño negocio que factura a sus clientes con PayPal. El dueño y su bookkeeper trabajan en la misma contabilidad.",
+      "before": "PayPal sin ContaBu",
+      "after": "PayPal con ContaBu",
+      "problem": {
+        "net": "PayPal deposita el neto, sin la comisión: hay que reconstruir a mano la venta bruta y la comisión.",
+        "deposit": "El retiro llega al banco y parece un ingreso: es fácil contar la venta dos veces.",
+        "purchase": "Una compra pagada con PayPal aparece en PayPal y otra vez como cargo en el banco.",
+        "owner": "El dueño factura por su lado y espera el reporte del bookkeeper para saber a dónde fue el dinero."
+      },
+      "solution": {
+        "net": "Cada venta se registra por el bruto, con la comisión de PayPal como gasto aparte; los reembolsos restan del ingreso.",
+        "deposit": "Cada retiro se empareja con su depósito en el banco y queda fuera del P&L.",
+        "purchase": "Cada compra se empareja con su cargo en el banco: el gasto cuenta una sola vez.",
+        "owner": "El dueño factura desde su portal (sus clientes pagan con tarjeta) y ve cada periodo que cierra su bookkeeper."
+      },
+      "sandbox": "Todo corre en el sandbox de PayPal. No se mueve dinero real.",
+      "start": "Empezar la visita",
+      "live": "Probar con mi propio sandbox de PayPal"
     }
   }
 }
