@@ -85,7 +85,7 @@ function clipped(el: HTMLElement): { top: number; left: number; right: number; b
 
 type Box = { top: number; left: number; width: number; height: number };
 
-// LAS DOS PRUEBAS MEDIDAS: un solo lugar, cada una con su fuente — docs/JUECES - IMPLEMENTACION TECNOLOGICA.md § 5
+// LAS DOS PRUEBAS MEDIDAS: un solo lugar, cada una con su fuente — docs/nebius/JUECES - IMPLEMENTACION TECNOLOGICA.md § 5
 // (los prompts finales, 24-oct). D2, el ciego del demo con el código que se entrega, 3 corridas: 14 · 15 · 14 de
 // 22 errores nunca vistos; solo el código (las reglas, sin IA): 8. R3, el ④ sobre los 118 Pendientes de 2026 del
 // libro real (×3 corridas): decide 15, acierta 7 sin la nota del bookkeeper y los 15 con ella (una cuenta de
