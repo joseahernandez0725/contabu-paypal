@@ -10,6 +10,9 @@
         ],
         "demo": [
           "contabu-demo"
+        ],
+        "paypal": [
+          "contabu-invoicing"
         ]
       }
     }
