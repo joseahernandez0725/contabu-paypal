@@ -2077,6 +2077,28 @@
           "body": "Entra con Google, escribe el código de acceso y conecta tu propia app de sandbox."
         }
       }
+    },
+    "welcome": {
+      "kicker": "ContaBu + PayPal, para dueños de negocio",
+      "title": "Cobra con tarjeta, directo a tu contabilidad",
+      "body": "Envía una factura desde tu celular, o díctala. Tu cliente paga con tarjeta de crédito o débito, aunque no tenga cuenta de PayPal, y la venta se registra sola en tu contabilidad, con la comisión de PayPal registrada aparte. Tu bookkeeper la ve el mismo día.",
+      "hide": "Ocultar",
+      "cta": "Crear una factura",
+      "fee": "PayPal cobra 3.49% + $0.49 por cada pago de factura en EE. UU.; abrir una cuenta para negocios no cuesta.",
+      "steps": {
+        "invoice": {
+          "title": "Crea la factura",
+          "body": "Elige un cliente guardado, o díctala. La revisas antes de que se envíe nada."
+        },
+        "card": {
+          "title": "Tu cliente paga con tarjeta",
+          "body": "PayPal le envía un enlace de pago por correo; con tarjeta o PayPal, sin necesidad de cuenta."
+        },
+        "books": {
+          "title": "Queda en tu contabilidad",
+          "body": "La venta por el bruto y la comisión como gasto, lista para tu bookkeeper."
+        }
+      }
     }
   }
 }

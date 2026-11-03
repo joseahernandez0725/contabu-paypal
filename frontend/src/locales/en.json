@@ -1948,6 +1948,28 @@
           "body": "Continue with Google, enter the access code and connect your own sandbox app."
         }
       }
+    },
+    "welcome": {
+      "kicker": "ContaBu + PayPal, for business owners",
+      "title": "Get paid by card, straight into your books",
+      "body": "Send an invoice from your phone, or dictate it. Your customer pays by credit or debit card, even without a PayPal account, and the sale is recorded in your books on its own, with the PayPal fee recorded separately. Your bookkeeper sees it the same day.",
+      "hide": "Hide",
+      "cta": "Create an invoice",
+      "fee": "PayPal charges 3.49% + $0.49 per invoice payment in the US; opening a business account is free.",
+      "steps": {
+        "invoice": {
+          "title": "Create the invoice",
+          "body": "Pick a saved customer, or dictate it. You review it before anything is sent."
+        },
+        "card": {
+          "title": "Your customer pays by card",
+          "body": "PayPal emails a payment link; card or PayPal, no account needed."
+        },
+        "books": {
+          "title": "It's in your books",
+          "body": "The sale at gross and the fee as an expense, ready for your bookkeeper."
+        }
+      }
     }
   }
 }

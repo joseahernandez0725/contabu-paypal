@@ -23,9 +23,12 @@ function readHidden(): boolean {
   try { return localStorage.getItem(HIDDEN_KEY) === "1"; } catch { return false; }
 }
 
-export default function PayPalTour({ view, onView, onConsole }: {
-  view: OwnerView;
-  onView: (v: OwnerView) => void;
+// Va arriba en el portal Y en la consola (Jose, 2-nov: "conservar la tabla de arriba para desplazarnos"): la parada de la
+// pantalla abierta queda marcada, y cada una lleva a la suya desde cualquiera de las dos cáscaras.
+export default function PayPalTour({ ownerView, consoleView, onOwner, onConsole }: {
+  ownerView?: OwnerView;
+  consoleView?: View;
+  onOwner: (v: OwnerView) => void;
   onConsole?: (v: View) => void;
 }) {
   const { t } = useTranslation();
@@ -55,8 +58,8 @@ export default function PayPalTour({ view, onView, onConsole }: {
       </div>
       <ol className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
         {STOPS.map((s, i) => {
-          const here = s.owner === view;
-          const go = s.owner ? () => onView(s.owner!) : onConsole && s.console ? () => onConsole(s.console!) : undefined;
+          const here = s.owner ? s.owner === ownerView : s.console === consoleView;
+          const go = s.owner ? () => onOwner(s.owner!) : onConsole && s.console ? () => onConsole(s.console!) : undefined;
           return (
             <li key={s.key}>
               <button onClick={go} disabled={!go}

@@ -16,6 +16,8 @@ import { DEMO_MODE, PAYPAL_DEMO, ENTER_CODE_EVENT, openDemoGuide, setTouring, ty
 import { AccessCodeScreen, TourBanner, TourMissing } from "./components/DemoDoors";
 import DemoGuide from "./components/DemoGuide";
 import OwnerApp, { OWNER_PREVIEW_EVENT } from "./components/owner/OwnerApp";
+import PayPalTour from "./components/owner/PayPalTour";
+import type { OwnerView } from "./components/owner/OwnerSidebar";
 import { PAYPAL_FROM_KEY } from "./components/owner/ConnectPayPal";
 import { auth } from "./firebase";
 import { getCompanies, getCompany, setActiveCompany, createCompany, getAuditSummary, confirmCheckout, demoDoor, finishPayPalOAuth, type PayPalOAuthResult } from "./api";
@@ -67,7 +69,7 @@ function App() {
   // La VUELTA de "Conectar con PayPal" (FASE 16, 1-nov): PayPal regresa a /paypal-return?code&state; se termina la
   // conexión, se vuelve a la pantalla de donde salió (portal → Cuentas, consola → Bancos) y se muestra el resultado.
   const [ppNotice, setPpNotice] = useState<{ tone: "ok" | "warn" | "error"; text: string; from: "owner" | "console" } | null>(null);
-  const [ownerStart, setOwnerStart] = useState<"summary" | "accounts">("summary");   // tras volver de PayPal: Cuentas
+  const [ownerStart, setOwnerStart] = useState<OwnerView>("summary");   // tras volver de PayPal: Cuentas
   useEffect(() => {
     const open = () => setOwnerPreview(true);
     window.addEventListener(OWNER_PREVIEW_EVENT, open);
@@ -283,6 +285,12 @@ function App() {
         </header>
 
         <main className="flex-1 w-full px-3 sm:px-4 py-3">
+        {PAYPAL_DEMO && company && (
+          <div className="mb-3">
+            <PayPalTour consoleView={view} onConsole={setView}
+                        onOwner={(v) => { setOwnerStart(v); setOwnerPreview(true); }} />
+          </div>
+        )}
         <VerifyEmailBanner />
         {!company ? (
           <div className="flex justify-center py-16">
