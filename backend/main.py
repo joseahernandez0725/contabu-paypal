@@ -84,7 +84,7 @@ class TransactionUpdate(BaseModel):
 
 class ClarifyGroupPayload(BaseModel):
     """Una sola explicación del dueño que aplica a VARIAS transacciones de la misma contraparte
-    (p. ej. la renta mensual a [redacted]): una pregunta → categoriza todas de una vez."""
+    (p. ej. la renta mensual al mismo arrendador): una pregunta → categoriza todas de una vez."""
     transaction_ids: list[int]
     answer: str
 
