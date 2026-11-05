@@ -64,8 +64,24 @@ def main_check() -> int:
                          .where(Transaction.account_type != AccountType.NON_PL)).one()
         expect("los depósitos del banco no cuentan como venta", doubled == 0, doubled)
         charge = s.exec(select(Transaction).where(Transaction.company_id == judge.id)
-                        .where(Transaction.description == "PAYPAL *GRAINGER")).one()
+                        .where(Transaction.description == "PAYPAL *DELTA VALLEY PARTS")).one()
         expect("el cargo de la compra queda como transferencia", charge.category == "Transfer", charge.category)
+
+        # El libro del banco propio (5-nov): nombres inventados, meses cerrados limpios, 4 Pendientes solo en octubre.
+        brands = ("STARBUCKS", "HOME DEPOT", "CHEVRON", "SHELL", "INTUIT", "QUICKBOOKS", "AMAZON", "PG&E", "PGANDE",
+                  "GUSTO", "GRAINGER", "FERGUSON", "JOHNSTONE", "STATE FARM", "VERIZON", "NETFLIX", "TARGET", "LOWE'S")
+        descs = s.exec(select(Transaction.description).where(Transaction.company_id == judge.id)).all()
+        found = sorted({b for d in descs for b in brands if b in (d or "").upper()})
+        expect("ninguna marca real en las transacciones del libro", not found, found)
+        month = func.date_trunc("month", Transaction.date)
+        pend = dict(s.exec(select(func.to_char(month, "YYYY-MM"), func.count(Transaction.id))
+                           .where(Transaction.company_id == judge.id).where(Transaction.account_type.is_(None))
+                           .group_by(month)).all())
+        expect("0 Pendientes en los meses cerrados; 4 en octubre (el mes abierto)", pend == {"2026-10": 4}, pend)
+        import month_close
+        neg = {m["month"]: m["negative"] for m in month_close.list_months(judge.id, s.get(User, judge.user_id), s)
+               if m["negative"]}
+        expect("ninguna cuenta negativa en ningún mes (las de contrapartida no cuentan)", not neg, neg)
         conn = lambda c: s.exec(select(PayPalConnection).where(PayPalConnection.company_id == c.id)).first()  # noqa: E731
         expect("el libro del juez NO viene conectado", conn(judge) is None, conn(judge))
         expect("la visita SÍ viene conectada", conn(tour) is not None and conn(tour).mode == "first_party", "first_party")

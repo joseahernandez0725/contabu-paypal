@@ -453,7 +453,9 @@ def build_tour(session: Session, *, review: bool = True, lang: str = "en") -> Fi
     if tour_firm_id(session) is not None:
         raise RuntimeError(f"la visita guiada ya existe (oficina {tour_firm_id(session)})")
     owner = _system_user(session, TOUR_UID)
-    firm = _new_office(session, owner, "tour", "ContaBu guided tour")
+    # En `paypal.contabu.com` la oficina lleva un nombre inventado de bookkeeper (5-nov, revisión 1 del demo): el portal
+    # lo pone en frases como "the books kept by …", y "ContaBu guided tour" se leía raro. El demo de Nebius no cambia.
+    firm = _new_office(session, owner, "tour", "Harbor Point Bookkeeping" if PAYPAL_DEMO else "ContaBu guided tour")
     session.commit()
     _cache(session).pop("tour", None)
     if review:

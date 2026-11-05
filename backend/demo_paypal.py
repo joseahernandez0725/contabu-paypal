@@ -19,9 +19,10 @@ from sqlmodel import Session
 import demo_data
 import month_close
 import paypal
-from ingestion import make_fingerprint
-from models import (AccountType, Company, Firm, Invoice, InvoiceCustomer, MonthClose, PayPalConnection, PayPalTransferMatch,
-                    Transaction, User)
+from categories import seed_chart
+from ingestion import ingest_parsed, make_fingerprint
+from models import (AccountType, CategoryRule, Company, Firm, Invoice, InvoiceCustomer, MonthClose, PayPalConnection,
+                    PayPalTransferMatch, RuleScope, Transaction, User)
 from rules import load_rules
 
 CUSTOMERS = [("Maple Grove Apartments", "billing@maplegrove.example.com"),
@@ -36,8 +37,103 @@ PAID_INVOICES = [(0, "Rooftop unit repair", "1850.00", date(2026, 7, 9)),
                  (2, "Quarterly maintenance", "640.00", date(2026, 9, 17))]
 REFUND = (2, "-125.00", date(2026, 8, 25))
 WITHDRAWALS = [("1800.00", date(2026, 7, 28)), ("2200.00", date(2026, 9, 21))]
-PURCHASE = ("Grainger", "312.40", date(2026, 8, 12))
+PURCHASE = ("Delta Valley Parts", "312.40", date(2026, 8, 12))
 CLOSED = [date(2026, 7, 1), date(2026, 8, 1), date(2026, 9, 1)]
+
+# ── El libro del BANCO (5-nov, revisión 1 del demo; plan aprobado por Jose) ──────────────────────────────────────
+# Propio de este demo: NO usa `demo_data.BOOKS` (ese libro lo siguen usando Nebius, las mediciones y `check_formula`).
+# Todos los comercios, el banco, la nómina y el seguro son INVENTADOS (✅ buscados en la web el 5-nov: "Concord" es una
+# marca de equipos HVAC y "Larkspur Courts" un complejo real, por eso no se usan). Julio a septiembre quedan cerrados y
+# LIMPIOS (todo con regla o escrito a mano); octubre queda abierto con 4 Pendientes para enseñar el cierre. Sin errores
+# sembrados para el revisor: la visita no usa IA.
+NAME, SECTOR, ACCOUNT = "Rivera HVAC LLC", "construction", "****4471"
+BANK_START, BANK_END = date(2026, 7, 1), date(2026, 10, 31)
+
+BANK_RULES = [
+    ("MOBILE DEPOSIT", AccountType.REVENUE, "Gross receipts or sales", "Customer checks"),
+    ("BRANCH DEPOSIT CASH", AccountType.REVENUE, "Gross receipts or sales", "Cash sales"),
+    ("CLAYTON RIDGE HVAC", AccountType.COGS, "Materials", "Clayton Ridge HVAC Supply"),
+    ("DELTA VALLEY PARTS", AccountType.COGS, "Materials", "Delta Valley Parts"),
+    ("BAYSIDE FUEL", AccountType.OPERATING_EXPENSE, "Car and truck expenses", "Bayside Fuel"),
+    ("MILLBROOK LANE", AccountType.OPERATING_EXPENSE, "Rent or lease – other business property", "Millbrook Lane Properties"),
+    ("ALDER CREEK INSURANCE", AccountType.OPERATING_EXPENSE, "Insurance", "Alder Creek Insurance"),
+    ("KESTREL WIRELESS", AccountType.OPERATING_EXPENSE, "Utilities", "Kestrel Wireless"),
+    ("EAST HILLS POWER", AccountType.OPERATING_EXPENSE, "Utilities", "East Hills Power & Gas"),
+    ("LEDGERLINE PAYROLL", AccountType.OPERATING_EXPENSE, "Wages", "Ledgerline Payroll"),
+    ("EFTPS", AccountType.OPERATING_EXPENSE, "Payroll taxes", "IRS"),
+    ("FIELDNOTE APP", AccountType.OPERATING_EXPENSE, "Software", "Fieldnote"),
+    ("MONTHLY SERVICE FEE", AccountType.OPERATING_EXPENSE, "Bank fees", "Harbor Point Bank"),
+    ("ZELLE PAYMENT TO DANIEL RIVERA", AccountType.NON_PL, "Owner Draw", "Daniel Rivera"),
+]
+# Cheques a subcontratistas: el banco no dice a quién; el bookkeeper los escribió a mano (lo manual manda).
+SUB_CHECKS = [(date(2026, 7, 14), "CHECK 1041", "2350.00", "Tallowmere Mechanical"),
+              (date(2026, 8, 20), "CHECK 1046", "2900.00", "Tallowmere Mechanical"),
+              (date(2026, 9, 16), "CHECK 1049", "1850.00", "Quillbrook Duct Works")]
+# Lo que el bookkeeper todavía no resolvió: solo en octubre, el mes abierto.
+OCTOBER_PENDING = [(date(2026, 10, 9), "CHECK 1052", "640.00", False),
+                   (date(2026, 10, 15), "ZELLE PAYMENT FROM T NGUYEN", "450.00", True),
+                   (date(2026, 10, 22), "POS PURCHASE 4417 HARDWARE STORE ANTIOCH CA", "84.12", False),
+                   (date(2026, 10, 27), "ATM WITHDRAWAL 0931 ANTIOCH CA", "200.00", False)]
+
+
+def _bank_dates(pick) -> list[date]:
+    return [d for d in (BANK_START + timedelta(days=i) for i in range((BANK_END - BANK_START).days + 1)) if pick(d)]
+
+
+def _bank_book() -> "demo_data.Book":
+    """Las filas del banco ****4471, de julio a octubre. Montos de un generador con semilla: siempre las mismas."""
+    b = demo_data.Book("paypal-rivera")
+    weekly = lambda wd: _bank_dates(lambda d: d.weekday() == wd)  # noqa: E731
+    monthly = lambda day: _bank_dates(lambda d: d.day == day)     # noqa: E731
+    spread = lambda n: demo_data.spread(n, b.rng, BANK_START, BANK_END)  # noqa: E731
+    b.add(weekly(3), lambda d: f"MOBILE DEPOSIT REF {d:%m%d}{b.rng.randint(100, 999)}", 2400, 4600, inflow=True)
+    b.add(spread(4), "BRANCH DEPOSIT CASH HARBOR POINT BANK", 300, 550, inflow=True)
+    b.add(spread(10), "CLAYTON RIDGE HVAC SUPPLY #1462 CONCORD CA", 300, 1600)
+    b.add(spread(6), "DELTA VALLEY PARTS 0331 HAYWARD CA", 150, 700)
+    b.add(spread(16), "BAYSIDE FUEL 0209 PITTSBURG CA", 62, 118)
+    b.add(monthly(1), "ACH DEBIT MILLBROOK LANE PROPERTIES RENT", 2400)
+    b.add(monthly(5), "ALDER CREEK INSURANCE PREMIUM", 412.50)
+    b.add(monthly(12), "KESTREL WIRELESS AUTOPAY", 148.32)
+    b.add(monthly(18), "EAST HILLS POWER & GAS ONLINE PMT", 176, 262)
+    b.add([d for d in _bank_dates(lambda d: d >= date(2026, 7, 10)) if (d - date(2026, 7, 10)).days % 14 == 0],
+          "LEDGERLINE PAYROLL NET PAY RIVERA HVAC", 1550, 1700)
+    net = {m: sum(-a for d, desc, a, _t in b.rows if desc.startswith("LEDGERLINE") and d.month == m) for m in (7, 8, 9)}
+    # La 941 del mes anterior, el 15 (≈ 32 % del neto: retenciones + Seguro Social y Medicare de las dos partes).
+    for d, base, k in ((date(2026, 7, 15), net[7], Decimal("0.31")), (date(2026, 8, 14), net[7], Decimal("0.32")),
+                       (date(2026, 9, 15), net[8], Decimal("0.32")), (date(2026, 10, 15), net[9], Decimal("0.32"))):
+        b.add([d], "IRS USATAXPYMT EFTPS RIVERA HVAC LLC", float((base * k).quantize(Decimal("0.01"))))
+    b.add(monthly(9), "FIELDNOTE APP SUBSCRIPTION", 59.00)
+    b.add(monthly(28), "MONTHLY SERVICE FEE", 15)
+    b.add(monthly(20), "ONLINE TRANSFER TO SAVINGS XXXXXX1209", 1000)
+    b.add(monthly(25), "ONLINE TRANSFER TO CREDIT CARD XXXXXX8823", 650, 1400)
+    b.add(spread(6), "ZELLE PAYMENT TO DANIEL RIVERA", 1200, 1800)
+    for d, desc, amount, who in SUB_CHECKS:
+        b.add([d], desc, float(amount), tag=f"sub:{who}")
+    for d, desc, amount, inflow in OCTOBER_PENDING:
+        b.add([d], desc, float(amount), inflow=inflow)
+    return b
+
+
+def _seed_bank_book(session: Session, firm: Firm, owner: User) -> Company:
+    """El libro y su banco, por el MISMO motor que un CSV (`ingest_parsed`: regla → transferencia → Pendiente)."""
+    company = Company(name=NAME, sector=SECTOR, user_id=owner.id, firm_id=firm.id)
+    session.add(company)
+    session.flush()
+    seed_chart(session, company)
+    session.add_all([CategoryRule(scope=RuleScope.COMPANY, company_id=company.id, match_text=m, account_type=at,
+                                  category=cat, subcategory=sub) for m, at, cat, sub in BANK_RULES])
+    session.flush()
+    book = _bank_book()
+    book.rows.sort(key=lambda r: (r[0], r[1]))
+    parsed = [(d, desc, signed, ACCOUNT, make_fingerprint(d, desc, signed, ACCOUNT)) for d, desc, signed, _t in book.rows]
+    ids = ingest_parsed(session, company.id, SECTOR, parsed, commit=False)["transaction_ids"]
+    assert len(ids) == len(book.rows), "el motor omitió filas del demo"
+    for (d, _desc, _s, tag), tid in zip(book.rows, ids):
+        if tag and tag.startswith("sub:"):
+            demo_data._manual(session, session.get(Transaction, tid), AccountType.COGS, "Contract labor – subcontractors",
+                              tag[4:], owner, datetime.combine(d + timedelta(days=2), datetime.min.time()))
+    session.flush()
+    return company
 
 
 def _fee(gross: str) -> str:
@@ -66,9 +162,8 @@ def _bank_row(session: Session, company: Company, account: str, day: date, descr
 
 
 def seed(session: Session, firm: Firm, owner: User, *, linked: bool) -> list[Company]:
-    name, sector, account, make, rules_seed, plant = demo_data.BOOKS[0]
-    company = demo_data._seed_book(session, firm, owner, name, sector, account, make(), rules_seed, plant)
-    demo_data.demo_web_evidence.seed_lookups(session, firm)
+    company = _seed_bank_book(session, firm, owner)
+    account = ACCOUNT
     paypal.ensure_accounts(session, company)
     rules = load_rules(session, company.id, company.sector or "")
 
@@ -95,7 +190,9 @@ def seed(session: Session, firm: Firm, owner: User, *, linked: bool) -> list[Com
                             status="PAID", payment_id=pid, transaction_id=tx.id, sent_at=paid_at - timedelta(days=10),
                             paid_at=paid_at, created_by_user_id=owner.id))
     who, value, day = REFUND
-    post(_event("DEMOREF0001", "T1107", value, day, fee="0.49", name=customers[who].name))
+    # Sin comisión de vuelta (5-nov): en EE. UU. PayPal no devuelve lo que cobró al recibir el pago (✅ paypal.com/us/business/
+    # paypal-business-fees, "Invoicing Transaction Refunds"; y el sandbox real del 4-nov, deuda #39).
+    post(_event("DEMOREF0001", "T1107", value, day, name=customers[who].name))
 
     for n, (amount, day) in enumerate(WITHDRAWALS, start=1):
         w = post(_event(f"DEMOWD{n:04d}", "T0400", f"-{amount}", day))
