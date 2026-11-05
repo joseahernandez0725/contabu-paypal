@@ -13,7 +13,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import JSON, Column, UniqueConstraint
+from sqlalchemy import JSON, Column, LargeBinary, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -775,6 +775,7 @@ class PayPalEntry(SQLModel, table=True):
     paypal_id: str
     event_code: str                                        # T0006, T1107, T0400… (tabla oficial de T-codes)
     transaction_id: Optional[int] = Field(default=None, foreign_key="transaction.id")   # ON DELETE SET NULL
+    reference_id: Optional[str] = Field(default=None, index=True)   # `paypal_reference_id`: de una devolución, el cobro original (3-nov)
     created_at: datetime = Field(default_factory=_utcnow)
 
 
@@ -825,5 +826,137 @@ class Invoice(SQLModel, table=True):
     sent_at: Optional[datetime] = Field(default=None)
     paid_at: Optional[datetime] = Field(default=None)
     last_checked_at: Optional[datetime] = Field(default=None)
+    series_id: Optional[int] = Field(default=None, foreign_key="invoiceseries.id")   # la generó una serie (4-nov); SET NULL
+    reminder_count: int = Field(default=0)                         # recordatorios oficiales de PayPal enviados
+    last_reminder_at: Optional[datetime] = Field(default=None)     # el último (no otro antes de 24 h)
+    auto_reminders_stopped_at: Optional[datetime] = Field(default=None)   # el dueño detuvo los AUTOMÁTICOS de esta factura (5-nov)
     created_by_user_id: Optional[int] = Field(default=None)
     created_at: datetime = Field(default_factory=_utcnow)
+
+
+class PayPalDispute(SQLModel, table=True):
+    """Una DISPUTA que un cliente abrió en PayPal contra un cobro del negocio (FASE 16, 3-nov). Copia de lo que dice
+    PayPal (`GET /v1/customer/disputes/{id}`), refrescada al sincronizar: así el portal y la visita la muestran sin
+    llamar a PayPal ni a la IA cada vez. El dinero que se mueve (contracargo, reversión) entra al libro por la
+    sincronización de PayPal, no por aquí. `summary` = el resumen de la IA, guardado para el `pp_updated_at` que leyó."""
+    __table_args__ = (UniqueConstraint("company_id", "dispute_id", name="uq_paypaldispute_company_id"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id", index=True)                # ON DELETE CASCADE (migración)
+    dispute_id: str                                                # PP-D-… de PayPal
+    transaction_ref: Optional[str] = Field(default=None)           # el cobro disputado (`seller_transaction_id`)
+    invoice_id: Optional[int] = Field(default=None, foreign_key="invoice.id")      # ON DELETE SET NULL
+    reason: str                                                    # MERCHANDISE_OR_SERVICE_NOT_RECEIVED, UNAUTHORISED…
+    status: str                                                    # OPEN, WAITING_FOR_SELLER_RESPONSE, RESOLVED…
+    stage: Optional[str] = Field(default=None)                     # INQUIRY, CHARGEBACK, PRE_ARBITRATION, ARBITRATION
+    outcome: Optional[str] = Field(default=None)                   # RESOLVED_BUYER_FAVOUR, RESOLVED_SELLER_FAVOUR…
+    amount: Decimal = Field(max_digits=14, decimal_places=2)
+    currency: str = Field(default="USD")
+    opened_at: Optional[datetime] = Field(default=None)            # UTC sin zona
+    seller_response_due: Optional[datetime] = Field(default=None)  # UTC sin zona
+    pp_updated_at: Optional[str] = Field(default=None)             # `update_time` de PayPal, tal cual
+    detail: Optional[dict] = Field(default=None, sa_column=Column(JSON))    # mensajes, opciones, enlaces (lo que usa la pantalla)
+    summary: Optional[dict] = Field(default=None, sa_column=Column(JSON))   # {"lang", "for", "text"…} de la IA
+    synced_at: datetime = Field(default_factory=_utcnow)
+
+
+class InvoiceOffline(SQLModel, table=True):
+    """Un PAGO o una DEVOLUCIÓN de una factura hecho FUERA de PayPal (efectivo, cheque, transferencia) y registrado en
+    PayPal por el dueño (FASE 16, 3-nov; `invoice_offline.py`). No crea venta: el dinero entra (o sale) por el BANCO, y
+    el código empareja esa fila del banco con esto (mismo monto, de 3 días antes a 10 después). `status`: "pending"
+    (sin fila del banco todavía; el efectivo puede quedarse aquí) · "auto" (el código la emparejó: había una sola) ·
+    "confirmed" (la eligió el bookkeeper) · "rejected" (el bookkeeper dijo que ninguna es: deja de proponerse)."""
+    __table_args__ = (UniqueConstraint("bank_tx_id", name="uq_invoiceoffline_bank_tx"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id", index=True)                # ON DELETE CASCADE (migración)
+    invoice_id: int = Field(foreign_key="invoice.id", index=True)                 # ON DELETE CASCADE
+    kind: str                                                      # "payment" | "refund"
+    method: str                                                    # CASH, CHECK, BANK_TRANSFER, WIRE_TRANSFER, OTHER
+    amount: Decimal = Field(max_digits=14, decimal_places=2)
+    day: date                                                      # la fecha que dijo el dueño
+    paypal_ref: Optional[str] = Field(default=None)                # el id que devuelve PayPal al registrarlo
+    bank_tx_id: Optional[int] = Field(default=None, foreign_key="transaction.id")  # ON DELETE SET NULL
+    status: str = Field(default="pending")
+    decided_by_user_id: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class InvoiceProfile(SQLModel, table=True):
+    """Los datos del NEGOCIO que salen en sus facturas (FASE 16, 4-nov): dirección, teléfono, sitio web, tax ID, y la nota
+    y los términos por defecto. Uno por libro; los pone el dueño. Van a PayPal en cada factura nueva (`invoicer` y
+    `detail`), con los nombres y los límites de la especificación oficial `invoicing_v2.json`."""
+    __table_args__ = (UniqueConstraint("company_id", name="uq_invoiceprofile_company_id"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id", index=True)                # ON DELETE CASCADE (migración)
+    address_line: Optional[str] = Field(default=None)
+    city: Optional[str] = Field(default=None)
+    state: Optional[str] = Field(default=None)                     # 2 letras (EE. UU.)
+    postal_code: Optional[str] = Field(default=None)
+    phone: Optional[str] = Field(default=None)                     # solo dígitos, sin el +1
+    website: Optional[str] = Field(default=None)
+    tax_id: Optional[str] = Field(default=None)
+    note: Optional[str] = Field(default=None)                      # al cliente (también va en el correo de PayPal)
+    terms: Optional[str] = Field(default=None)                     # términos y condiciones
+    # El LOGO (4-nov): PNG de hasta 250 × 90 (límite de PayPal), ya ajustado en el navegador. PayPal no recibe la imagen:
+    # pide su URL https pública → la API lo sirve en `/api/public/invoice-logo/{logo_key}` (clave al azar, nueva en cada subida).
+    logo: Optional[bytes] = Field(default=None, sa_column=Column(LargeBinary))
+    logo_key: Optional[str] = Field(default=None, index=True)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class InvoiceSeries(SQLModel, table=True):
+    """FACTURAS RECURRENTES (FASE 16, 4-nov): una serie de PayPal (`/v2/invoicing/recurring-invoices`, rutas del Agent
+    Toolkit, ✅ probadas en sandbox) que genera y ENVÍA sola una factura cada semana, mes o año. PayPal la genera ~30 s
+    después de activarla (y después en cada fecha); cada factura generada lleva el mismo `template_id` de la serie, y así
+    ContaBu la trae a Cobros (`Invoice.series_id`). Su cobro entra al libro como el de cualquier factura de PayPal."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id", index=True)                # ON DELETE CASCADE (migración)
+    customer_id: Optional[int] = Field(default=None, foreign_key="invoicecustomer.id")   # ON DELETE SET NULL
+    paypal_series_id: str = Field(index=True)                      # RI-…
+    template_id: Optional[str] = Field(default=None)                # el que comparten sus facturas generadas
+    concept: str
+    amount: Decimal = Field(max_digits=14, decimal_places=2)
+    currency: str = Field(default="USD")
+    interval_unit: str                                             # WEEK · MONTH · YEAR
+    interval_count: int = Field(default=1)
+    start_date: date
+    total_cycles: int = Field(default=0)                           # 0 = sin fin (así lo devuelve PayPal)
+    payment_term: str = Field(default="NET_15")                    # DUE_ON_RECEIPT · NET_10 · NET_15 · NET_30
+    status: str = Field(default="DRAFT")                           # DRAFT · ACTIVE · CANCELLED · COMPLETED (de PayPal)
+    completed_cycles: int = Field(default=0)
+    next_date: Optional[date] = Field(default=None)
+    created_by_user_id: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class Contractor(SQLModel, table=True):
+    """Un CONTRATISTA del negocio, a quien el dueño le paga con PayPal Payouts (FASE 16, 4-nov; detrás de `PAYPAL_PAYOUTS`).
+    El correo es el de su cuenta de PayPal: ahí le llega el dinero."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id", index=True)                # ON DELETE CASCADE (migración)
+    name: str
+    email: str
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class ContractorPayment(SQLModel, table=True):
+    """Un PAGO a un contratista con PayPal Payouts (`POST /v1/payments/payouts`, ✅ sandbox 4-nov: SUCCESS en ~15 s, comisión
+    de $0.25 que paga quien envía). Al confirmarse, entra al libro como COGS · Subcontractors (decisión de Jose, 4-nov) con el
+    `transaction_id` de PayPal como clave (la sincronización no lo duplica); la comisión, aparte. `status` = el del ítem de
+    PayPal: PENDING · SUCCESS · UNCLAIMED · FAILED · RETURNED · BLOCKED · ONHOLD · REFUNDED · DENIED."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id", index=True)                # ON DELETE CASCADE (migración)
+    contractor_id: Optional[int] = Field(default=None, foreign_key="contractor.id")    # ON DELETE SET NULL
+    amount: Decimal = Field(max_digits=14, decimal_places=2)
+    memo: str = Field(default="")
+    status: str = Field(default="PENDING")
+    paypal_batch_id: Optional[str] = Field(default=None)
+    paypal_item_id: Optional[str] = Field(default=None)
+    paypal_tx_id: Optional[str] = Field(default=None, index=True)
+    fee: Optional[Decimal] = Field(default=None, max_digits=14, decimal_places=2)
+    transaction_id: Optional[int] = Field(default=None, foreign_key="transaction.id")   # la fila del libro; SET NULL
+    created_by_user_id: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=_utcnow)
+    paid_at: Optional[datetime] = Field(default=None)

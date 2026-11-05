@@ -4,6 +4,7 @@ import { disconnectPayPal, getPayPal, syncPayPal, type PayPalStatus } from "../.
 import ConnectPayPal from "./ConnectPayPal";
 import { BTN_GHOST, BTN_SMALL_PRIMARY, DOT } from "../PageKit";
 import PayPalTransfers from "./PayPalTransfers";
+import InvoiceOfflinePanel from "./InvoiceOfflinePanel";
 
 // PAYPAL EN LA PÁGINA BANCOS de la consola (FASE 16 Paso 3, área PayPal / portal del dueño · 31-oct-2026).
 // PayPal es una cuenta más del libro: el bookkeeper lo conecta, lo actualiza y lo desconecta aquí, junto a los bancos de
@@ -82,6 +83,7 @@ export default function PayPalCard({ canEdit }: { canEdit: boolean }) {
       {err && <p className="text-xs text-rose-700">{err}</p>}
       {/* Siempre: lo ya emparejado sigue en el libro aunque PayPal se desconecte (y el libro sembrado del demo lo trae). */}
       <PayPalTransfers refreshKey={tick} />
+      <InvoiceOfflinePanel refreshKey={tick} />
     </div>
   );
 }

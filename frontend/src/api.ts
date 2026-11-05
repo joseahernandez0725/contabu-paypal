@@ -1492,6 +1492,12 @@ export interface OwnerInvoice {
   id: number; number: string | null; status: string; overdue: boolean; customer: Customer | null; concept: string;
   amount: string; currency: string; due_date: string; recipient_view_url: string | null; sent_at: string | null;
   paid_at: string | null; in_books: boolean;
+  refund_in_books: boolean | null;   // solo si está devuelta: ¿ya está la devolución en el libro? (3-nov)
+  series_id: number | null;          // la generó una factura recurrente (4-nov)
+  auto_reminders_stopped: boolean;   // el dueño detuvo sus recordatorios automáticos (5-nov; irreversible en PayPal)
+  reminder_count: number; last_reminder_at: string | null;   // recordatorios oficiales de PayPal (uno cada 24 h)
+  // Pagada (o devuelta) FUERA de PayPal (3-nov): el último registro y si su fila del banco ya llegó.
+  offline: { kind: "payment" | "refund"; method: OfflineMethod; day: string; in_bank: boolean } | null;
 }
 export interface InvoicesView {
   invoices: OwnerInvoice[];
@@ -1513,10 +1519,142 @@ async function ownerCall<T>(path: string, method = "GET", body?: unknown): Promi
 export const getCustomers = () => ownerCall<Customer[]>("/customers");
 export const addCustomer = (name: string, email: string) => ownerCall<Customer>("/customers", "POST", { name, email });
 export const getInvoices = () => ownerCall<InvoicesView>("/invoices");
-export const createInvoice = (b: { customer_id: number; concept: string; amount: string; due_date: string }) =>
+export const createInvoice = (b: { customer_id: number; concept: string; amount: string; due_date: string; number?: string; reference?: string }) =>
   ownerCall<InvoicesView>("/invoices", "POST", b);
-export const sendInvoice = (id: number) => ownerCall<InvoicesView>(`/invoices/${id}/send`, "POST");
+// `notify: false` = cobro en persona con el QR (3-nov): PayPal no le manda el correo al cliente.
+export const sendInvoice = (id: number, notify = true) => ownerCall<InvoicesView>(`/invoices/${id}/send`, "POST", { notify });
 export const refreshInvoices = () => ownerCall<InvoicesView & { changed: number }>("/invoices/refresh", "POST");
+// Los datos del negocio en sus facturas y el número propio (4-nov). Van a PayPal en cada factura NUEVA.
+export interface InvoiceProfile { address_line: string; city: string; state: string; postal_code: string; phone: string;
+                                  website: string; tax_id: string; note: string; terms: string;
+                                  logo_path?: string | null; logo_on_paypal?: boolean }   // el logo (4-nov)
+export const getInvoiceProfile = () => ownerCall<InvoiceProfile>("/invoice-profile");
+export const putInvoiceProfile = (p: InvoiceProfile) => ownerCall<InvoiceProfile>("/invoice-profile", "PUT", p);
+// El logo (4-nov): PNG de hasta 250 × 90 (la pantalla lo ajusta). `logoSrc` arma la URL pública que sirve la API.
+export const logoSrc = (path: string) => `${API}${path}`;
+export async function uploadInvoiceLogo(png: Blob): Promise<InvoiceProfile> {
+  const form = new FormData();
+  form.append("file", png, "logo.png");
+  const res = await fetch(`${API}/api/owner/companies/${cid()}/invoice-profile/logo`, { method: "POST", headers: await authHeaders(), body: form });
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}));
+    throw new Error(typeof b?.detail === "string" ? b.detail : `http_${res.status}`);
+  }
+  return res.json();
+}
+export const deleteInvoiceLogo = () => ownerCall<InvoiceProfile>("/invoice-profile/logo", "DELETE");
+export const getNextInvoiceNumber = () => ownerCall<{ number: string | null }>("/invoices/next-number");
+// PAGOS A CONTRATISTAS con PayPal Payouts (4-nov), detrás de `PAYPAL_PAYOUTS`: apagado → `{ enabled: false }`.
+export interface Contractor { id: number; name: string; email: string; paid_this_year: string; has_payments: boolean }
+export interface ContractorPayment { id: number; contractor: string | null; amount: string; memo: string; status: string;
+                                     fee: string | null; in_books: boolean; date: string }
+export type ContractorsView = { enabled: false } | { enabled: true; contractors: Contractor[]; payments: ContractorPayment[] };
+export const getContractors = () => ownerCall<ContractorsView>("/contractors");
+export const addContractor = (name: string, email: string) => ownerCall<ContractorsView>("/contractors", "POST", { name, email });
+export const payContractor = (id: number, amount: string, memo: string) =>
+  ownerCall<ContractorsView>(`/contractors/${id}/pay`, "POST", { amount, memo });
+export const editContractor = (id: number, name: string, email: string) => ownerCall<ContractorsView>(`/contractors/${id}`, "PUT", { name, email });
+export const deleteContractor = (id: number) => ownerCall<ContractorsView>(`/contractors/${id}`, "DELETE");
+export const refreshContractorPayments = () => ownerCall<ContractorsView>("/contractors/refresh", "POST");
+// Facturas RECURRENTES (4-nov): PayPal genera y envía cada factura; ContaBu las trae a Cobros al abrirlo.
+export type SeriesUnit = "WEEK" | "MONTH" | "YEAR";
+export type PaymentTerm = "DUE_ON_RECEIPT" | "NET_10" | "NET_15" | "NET_30";
+export interface InvoiceSeries {
+  id: number; customer: Customer | null; concept: string; amount: string; interval_unit: SeriesUnit; interval_count: number;
+  start_date: string; total_cycles: number; payment_term: PaymentTerm; status: string; completed_cycles: number; next_date: string | null;
+}
+export const getSeries = () => ownerCall<{ series: InvoiceSeries[] }>("/series");
+export const createSeries = (b: { customer_id: number; concept: string; amount: string; interval_unit: SeriesUnit; interval_count: number;
+                                  start_date: string; total_cycles: number; payment_term: PaymentTerm }) =>
+  ownerCall<{ series: InvoiceSeries[] }>("/series", "POST", b);
+export const editSeries = (id: number, concept: string, amount: string, payment_term: PaymentTerm) =>
+  ownerCall<{ series: InvoiceSeries[] }>(`/series/${id}`, "PUT", { concept, amount, payment_term });
+export const cancelSeries = (id: number) => ownerCall<{ series: InvoiceSeries[] }>(`/series/${id}/cancel`, "POST");
+// Recordatorios AUTOMÁTICOS de PayPal (3-nov): dos reglas de la cuenta, no por factura. Viven en PayPal.
+export interface AutoRule { id?: string; active: boolean; days: number; times: number }
+export interface AutoReminders { before: AutoRule | null; after: AutoRule | null }
+export const getAutoReminders = () => ownerCall<AutoReminders>("/auto-reminders");
+export const setAutoReminders = (before: AutoRule, after: AutoRule) =>
+  ownerCall<AutoReminders>("/auto-reminders", "PUT", { before, after });
+// Cancelar una enviada (PayPal solo deja elegir si avisa al cliente) y descartar un borrador (3-nov).
+export const cancelInvoice = (id: number, notify: boolean) => ownerCall<InvoicesView>(`/invoices/${id}/cancel`, "POST", { notify });
+export const discardInvoice = (id: number) => ownerCall<InvoicesView>(`/invoices/${id}/discard`, "POST");
+// Cobrar una factura abierta (1-nov): el recordatorio oficial de PayPal, un mensaje personal (Nemotron redacta con
+// marcadores; ContaBu pone cliente, monto y enlace) y el QR de pago para cobrar en persona.
+export const stopAutoReminders = (id: number) => ownerCall<InvoicesView>(`/invoices/${id}/stop-auto-reminders`, "POST");
+export const remindInvoice = (id: number) => ownerCall<InvoicesView>(`/invoices/${id}/remind`, "POST");
+export interface ReminderDraft { subject: string; body: string; mailto: string | null; to: string | null; sent_to_ai: string }
+export const reminderDraft = (id: number, lang: string, tone: "friendly" | "firm") =>
+  ownerCall<ReminderDraft>(`/invoices/${id}/reminder-draft`, "POST", { lang, tone });
+export const invoiceQR = (id: number) => ownerCall<{ png_base64: string }>(`/invoices/${id}/qr`);
+
+// Pagos y devoluciones FUERA de PayPal (3-nov): el dueño los registra en PayPal; ContaBu NO crea venta: empareja la fila
+// del banco (una sola → sola; varias → el bookkeeper en la consola).
+export type OfflineMethod = "CASH" | "CHECK" | "BANK_TRANSFER" | "WIRE_TRANSFER" | "OTHER";
+// `amount` vacío = todo lo que falta (o todo lo cobrado sin devolver); con monto, un parcial (5-nov).
+export const recordOfflinePayment = (id: number, method: OfflineMethod, day: string, note: string, amount = "") =>
+  ownerCall<InvoicesView>(`/invoices/${id}/record-payment`, "POST", { method, day, note, amount });
+export const recordOfflineRefund = (id: number, method: OfflineMethod, day: string, amount = "") =>
+  ownerCall<InvoicesView>(`/invoices/${id}/record-refund`, "POST", { method, day, amount });
+interface OfflineHead { id: number; kind: "payment" | "refund"; method: OfflineMethod; day: string; amount: string;
+                        invoice: { number: string | null; customer: string | null } }
+export interface OfflineView {
+  proposals: (OfflineHead & { candidates: BriefTx[] })[];
+  matched: (OfflineHead & { status: string; bank: BriefTx | null })[];
+  waiting: OfflineHead[];
+  window: { before: number; after: number };
+}
+async function offlineCall(path: string, method = "GET", body?: unknown): Promise<OfflineView> {
+  const res = await fetch(`${API}/api/companies/${cid()}/invoices/offline${path}`, {
+    method, headers: { ...(await authHeaders()), ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`offline_http_${res.status}`);
+  return res.json();
+}
+export const getOffline = () => offlineCall("");
+export const rematchOffline = () => offlineCall("/match", "POST");
+export const confirmOffline = (id: number, bankTxId: number) => offlineCall(`/${id}/confirm`, "POST", { bank_tx_id: bankTxId });
+export const rejectOffline = (id: number) => offlineCall(`/${id}/reject`, "POST");
+
+// Disputas de PayPal (3-nov): la copia guardada, lo que está en disputa (SQL), el resumen de la IA (guardado) y lo que
+// decide el dueño. `sandbox_actions` = lo que haría PayPal, solo en sandbox.
+export type DisputeSandboxAction = "escalate" | "seller_evidence" | "buyer_favor" | "seller_favor";
+export interface Dispute {
+  id: number; dispute_id: string; reason: string; status: string; stage: string | null; outcome: string | null;
+  amount: string; currency: string; opened_at: string | null; seller_response_due: string | null;
+  invoice: { id: number; number: string | null; concept: string; customer: string | null } | null;
+  messages: { by: string | null; at: string | null; text: string }[];
+  can_accept: boolean; can_message: boolean; can_offer: boolean; can_evidence: boolean; sandbox_actions: DisputeSandboxAction[];
+  summary: { summary: string; customer_says: string; options: string } | null;
+  resolution_center: string;
+}
+export interface DisputesView { disputes: Dispute[]; summary: { open: number; in_dispute: string } }
+export const getDisputes = (lang: string) => ownerCall<DisputesView>(`/disputes?lang=${lang}`);
+export const refreshDisputes = (lang: string) => ownerCall<DisputesView>(`/disputes/refresh?lang=${lang}`, "POST");
+export const summarizeDispute = (id: number, lang: string) => ownerCall<DisputesView>(`/disputes/${id}/summary`, "POST", { lang });
+export const acceptDispute = (id: number, note: string, lang: string) =>
+  ownerCall<DisputesView>(`/disputes/${id}/accept`, "POST", { note, lang });
+export const messageDispute = (id: number, message: string, lang: string) =>
+  ownerCall<DisputesView>(`/disputes/${id}/message`, "POST", { message, lang });
+// Ofrecer un reembolso y subir una prueba (5-nov). La prueba va como formulario (archivo opcional: PDF o imagen, ≤10 MB).
+export const offerDispute = (id: number, amount: string, note: string, lang: string) =>
+  ownerCall<DisputesView>(`/disputes/${id}/offer`, "POST", { amount, note, lang });
+export const DISPUTE_EVIDENCE = ["PROOF_FOR_SOFTWARE_OR_SERVICE_DELIVERED", "PROOF_OF_RECEIPT_COPY", "COPY_OF_CONTRACT",
+  "PROOF_OF_REFUND_OUTSIDE_PAYPAL", "MERCHANT_RESPONSE", "PHOTOS_OF_SHIPPED_ITEM", "OTHER"] as const;
+export async function evidenceDispute(id: number, evidenceType: string, notes: string, file: File | null, lang: string): Promise<DisputesView> {
+  const form = new FormData();
+  form.append("evidence_type", evidenceType); form.append("notes", notes); form.append("lang", lang);
+  if (file) form.append("file", file, file.name);
+  const res = await fetch(`${API}/api/owner/companies/${cid()}/disputes/${id}/evidence`, { method: "POST", headers: await authHeaders(), body: form });
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}));
+    throw new Error(typeof b?.detail === "string" ? b.detail : b?.detail?.code ?? `http_${res.status}`);
+  }
+  return res.json();
+}
+export const simulateDispute = (id: number, action: DisputeSandboxAction, lang: string) =>
+  ownerCall<DisputesView>(`/disputes/${id}/simulate`, "POST", { action, lang });
 
 // --- "Conectar con PayPal": Log in with PayPal (FASE 16, 1-nov) ------------------------------------------------------
 export async function authorizePayPal(companyId?: number): Promise<string> {

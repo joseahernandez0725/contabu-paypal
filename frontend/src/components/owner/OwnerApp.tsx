@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { getOwnerHome, type OwnerHome } from "../../api";
+import { getContractors, getOwnerHome, type OwnerHome } from "../../api";
 import OwnerYearView from "./OwnerYear";
 import OwnerAccounts from "./OwnerAccounts";
 import OwnerInvoices from "./OwnerInvoices";
+import OwnerSettings from "./OwnerSettings";
+import OwnerContractors from "./OwnerContractors";
 import ConnectPayPal from "./ConnectPayPal";
 import { monthLabel } from "./MonthCloseSection";
 import { getInvoices, money } from "../../api";
@@ -47,6 +49,9 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
 }) {
   const { t, i18n } = useTranslation();
   const [view, setView] = useState<OwnerView>(initialView);
+  // Contratistas solo con PAYPAL_PAYOUTS encendido en el backend (4-nov): si no, la pestaña no aparece.
+  const [payouts, setPayouts] = useState(false);
+  useEffect(() => { getContractors().then((x) => setPayouts(x.enabled)).catch(() => setPayouts(false)); }, []);
   const [newInvoice, setNewInvoice] = useState(0);   // "+ Nueva factura" desde el Resumen: abre Cobros con el formulario
   useEffect(() => { setView(initialView); }, [initialView]);
   const [menuOpen, setMenuOpen] = useState(false); // el cajón de la barra lateral (solo celular)
@@ -63,7 +68,7 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
   // La misma cáscara que la consola (App.tsx): barra lateral desplegable + barra de arriba de h-14 con el título.
   return (
     <div className="min-h-screen flex bg-slate-50 text-slate-900">
-      <OwnerSidebar view={view} onNavigate={setView} company={company} companies={companies} onSwitch={onSwitch}
+      <OwnerSidebar view={view} onNavigate={setView} hidden={payouts ? [] : ["contractors"]} company={company} companies={companies} onSwitch={onSwitch}
                     preview={!!onExitPreview} open={menuOpen} onClose={() => setMenuOpen(false)} />
 
       <div className="flex-1 min-w-0 flex flex-col">
@@ -116,6 +121,10 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
             </>
           ) : view === "accounts" ? (
             <OwnerAccounts preview={home.preview} managedBy={home.managed_by} />
+          ) : view === "contractors" ? (
+            <OwnerContractors preview={home.preview} />
+          ) : view === "settings" ? (
+            <OwnerSettings preview={home.preview} businessName={home.company.name} paypalConnected={home.paypal.connected} />
           ) : (
             <OwnerInvoices preview={home.preview} businessName={home.company.name} autoOpen={newInvoice} />
           )}

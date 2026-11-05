@@ -19,6 +19,7 @@ import os
 import sys
 
 os.environ.setdefault("AUTH_DEV_MODE", "true")
+os.environ.setdefault("PAYPAL_PAYOUTS", "true")   # los pagos a contratistas (4-nov): con el interruptor encendido se prueba el permiso real
 
 # ── La prueba de permisos NUNCA sale a internet (3-oct). ──────────────────────────────────────────
 # La pasada del bookkeeper SÍ atraviesa el permiso, y algunas rutas llaman servicios externos (Teller
@@ -114,6 +115,49 @@ CLIENT_ALLOWED: set[tuple[str, str]] = {
     ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/send"),  # enviarla, tras confirmar en pantalla
     ("POST", "/api/owner/companies/{company_id}/invoices/refresh"),  # preguntar a PayPal si ya se pagó
     ("POST", "/api/owner/companies/{company_id}/invoices/voice"),  # dictado → el formulario (no envía nada)
+    # Recordatorios y QR (1-nov): el recordatorio oficial de PayPal, el borrador de un mensaje personal y el QR de pago.
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/remind"),
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/reminder-draft"),
+    ("GET", "/api/owner/companies/{company_id}/invoices/{invoice_id}/qr"),
+    # Disputas (3-nov): leer y refrescar; resumir, aceptar, escribir y simular (sandbox) son SOLO del dueño.
+    ("GET", "/api/owner/companies/{company_id}/disputes"),            # sus disputas y lo que está en disputa
+    ("POST", "/api/owner/companies/{company_id}/disputes/refresh"),   # leer de PayPal (solo lee)
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/summary"),
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/accept"),
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/message"),
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/simulate"),
+    # Pagado o devuelto fuera de PayPal (3-nov): registrarlo es SOLO del dueño.
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/record-payment"),
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/record-refund"),
+    # Cancelar una enviada y descartar un borrador (3-nov): SOLO el dueño.
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/cancel"),
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/discard"),
+    # Recordatorios automáticos (3-nov): leer las reglas de PayPal; cambiarlas es SOLO del dueño.
+    ("GET", "/api/owner/companies/{company_id}/auto-reminders"),
+    ("PUT", "/api/owner/companies/{company_id}/auto-reminders"),
+    # Los datos del negocio en sus facturas (4-nov): leer; guardarlos y pedir el número que sigue son SOLO del dueño.
+    ("GET", "/api/owner/companies/{company_id}/invoice-profile"),
+    ("PUT", "/api/owner/companies/{company_id}/invoice-profile"),
+    ("GET", "/api/owner/companies/{company_id}/invoices/next-number"),
+    # Facturas recurrentes (4-nov): verlas; programarlas y detenerlas son SOLO del dueño.
+    ("GET", "/api/owner/companies/{company_id}/series"),
+    ("POST", "/api/owner/companies/{company_id}/series"),
+    ("POST", "/api/owner/companies/{company_id}/series/{series_id}/cancel"),
+    # El logo de la factura (4-nov): subirlo y quitarlo son SOLO del dueño.
+    ("POST", "/api/owner/companies/{company_id}/invoice-profile/logo"),
+    ("DELETE", "/api/owner/companies/{company_id}/invoice-profile/logo"),
+    # Pagos a contratistas (4-nov, detrás de PAYPAL_PAYOUTS): ver la lista; agregar, pagar y actualizar son SOLO del dueño.
+    ("GET", "/api/owner/companies/{company_id}/contractors"),
+    ("POST", "/api/owner/companies/{company_id}/contractors"),
+    ("POST", "/api/owner/companies/{company_id}/contractors/{contractor_id}/pay"),
+    ("POST", "/api/owner/companies/{company_id}/contractors/refresh"),
+    ("PUT", "/api/owner/companies/{company_id}/contractors/{contractor_id}"),
+    ("DELETE", "/api/owner/companies/{company_id}/contractors/{contractor_id}"),
+    # Detener los recordatorios automáticos de una factura (5-nov): SOLO el dueño.
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/stop-auto-reminders"),
+    ("PUT", "/api/owner/companies/{company_id}/series/{series_id}"),
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/offer"),
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/evidence"),
 }
 
 # Rutas SOLO DEL DUEÑO: el bookkeeper (y su vista previa) NO puede cobrar a nombre del dueño (FASE 16, 31-oct). La
@@ -123,6 +167,33 @@ OWNER_ONLY: set[tuple[str, str]] = {
     ("POST", "/api/owner/companies/{company_id}/invoices"),
     ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/send"),
     ("POST", "/api/owner/companies/{company_id}/invoices/voice"),
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/remind"),
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/reminder-draft"),
+    ("GET", "/api/owner/companies/{company_id}/invoices/{invoice_id}/qr"),
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/summary"),
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/accept"),
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/message"),
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/simulate"),
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/record-payment"),
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/record-refund"),
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/cancel"),
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/discard"),
+    ("PUT", "/api/owner/companies/{company_id}/auto-reminders"),
+    ("PUT", "/api/owner/companies/{company_id}/invoice-profile"),
+    ("GET", "/api/owner/companies/{company_id}/invoices/next-number"),
+    ("POST", "/api/owner/companies/{company_id}/series"),
+    ("POST", "/api/owner/companies/{company_id}/series/{series_id}/cancel"),
+    ("POST", "/api/owner/companies/{company_id}/invoice-profile/logo"),
+    ("DELETE", "/api/owner/companies/{company_id}/invoice-profile/logo"),
+    ("POST", "/api/owner/companies/{company_id}/contractors"),
+    ("POST", "/api/owner/companies/{company_id}/contractors/{contractor_id}/pay"),
+    ("POST", "/api/owner/companies/{company_id}/contractors/refresh"),
+    ("PUT", "/api/owner/companies/{company_id}/contractors/{contractor_id}"),
+    ("DELETE", "/api/owner/companies/{company_id}/contractors/{contractor_id}"),
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/stop-auto-reminders"),
+    ("PUT", "/api/owner/companies/{company_id}/series/{series_id}"),
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/offer"),
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/evidence"),
 }
 
 # Rutas que NO se prueban porque no pertenecen al modelo de acceso por libro.
@@ -130,6 +201,7 @@ SKIP: set[tuple[str, str]] = {
     ("POST", "/api/stripe/webhook"),   # lo llama Stripe con su firma, no un usuario
     ("POST", "/api/paypal/webhook/{connection_id}"),   # lo llama PayPal; check_paypal prueba que sin firma válida → 400
     ("POST", "/api/companies"),        # crea un libro NUEVO: no hay `company_id` que validar (Paso 4)
+    ("GET", "/api/public/invoice-logo/{key}"),   # PÚBLICA: la pide PayPal; solo con la clave al azar (check_profile la prueba)
 }
 
 # Cuerpos mínimos VÁLIDOS para las rutas que mutan el libro. Sin esto FastAPI responde 422
@@ -190,6 +262,27 @@ BODIES: dict[tuple[str, str], dict] = {
                                                             "due_date": "2099-01-01"},
     # Cobro por voz (1-nov): sin cliente reconocido no llama a la IA (responde que elija el cliente).
     ("POST", "/api/owner/companies/{company_id}/invoices/voice"): {"text": "factura de prueba por 10 dólares"},
+    # Recordatorios (1-nov): factura 999999 → para el dueño un 404, para el bookkeeper 403 (OWNER_ONLY).
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/reminder-draft"): {"lang": "en"},
+    # Disputas (3-nov): disputa 999999 → para el dueño un 404, para el bookkeeper 403 (OWNER_ONLY).
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/summary"): {"lang": "en"},
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/accept"): {"note": "permcheck"},
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/message"): {"message": "permcheck"},
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/simulate"): {"action": "seller_favor"},
+    # Fuera de PayPal (3-nov): factura 999999 → para el dueño un 404, para el bookkeeper 403. Confirmar es del bookkeeper.
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/record-payment"): {"method": "CASH", "day": "2026-11-01"},
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/record-refund"): {"method": "CASH", "day": "2026-11-01"},
+    ("POST", "/api/companies/{company_id}/invoices/offline/{offline_id}/confirm"): {"bank_tx_id": 999999},
+    ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/cancel"): {"notify": False},
+    ("PUT", "/api/owner/companies/{company_id}/auto-reminders"): {"before": {"active": False, "days": 99}, "after": {"active": False, "days": 2, "times": 2}},
+    ("PUT", "/api/owner/companies/{company_id}/invoice-profile"): {"state": "Florida"},
+    ("POST", "/api/owner/companies/{company_id}/series"): {"customer_id": 999999, "concept": "Permcheck", "amount": "10.00", "start_date": "2099-01-01"},
+    # Contratistas (4-nov): con PAYPAL_PAYOUTS encendido en la prueba; contratista 999999 → 404 para el dueño, 403 para el bookkeeper.
+    ("POST", "/api/owner/companies/{company_id}/contractors"): {"name": "Permcheck", "email": "pc@test.local"},
+    ("POST", "/api/owner/companies/{company_id}/contractors/{contractor_id}/pay"): {"amount": "1.00"},
+    ("PUT", "/api/owner/companies/{company_id}/contractors/{contractor_id}"): {"name": "Permcheck", "email": "pc@test.local"},
+    ("PUT", "/api/owner/companies/{company_id}/series/{series_id}"): {"concept": "Permcheck", "amount": "10.00"},
+    ("POST", "/api/owner/companies/{company_id}/disputes/{dispute_id}/offer"): {"amount": "1.00"},
     # Log in with PayPal (1-nov): un `state` inventado → 400 (la firma no cuadra), nunca un 2xx.
     ("POST", "/api/paypal/oauth"): {"code": "permcheck", "state": "permcheck.forged"},
     ("POST", "/api/companies/{company_id}/paypal/credentials"): {"client_id": "", "client_secret": ""},

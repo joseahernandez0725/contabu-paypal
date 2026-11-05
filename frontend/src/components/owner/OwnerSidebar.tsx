@@ -13,8 +13,8 @@ import { PAYPAL_DEMO } from "../../demo";
 // libro", el recorrido del demo son del bookkeeper) y van a divergir: el portal se usa más en el celular y llevará
 // la marca de la firma. Unificar solo si aparece una tercera cáscara (DEUDA TECNICA.md, ⚫ #32).
 
-export type OwnerView = "summary" | "accounts" | "invoices";
-export const OWNER_ORDER: OwnerView[] = ["summary", "accounts", "invoices"];
+export type OwnerView = "summary" | "accounts" | "invoices" | "contractors" | "settings";
+export const OWNER_ORDER: OwnerView[] = ["summary", "accounts", "invoices", "contractors", "settings"];
 
 const ic = (d: ReactNode) => (
   <svg viewBox="0 0 24 24" className="size-[18px] shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -25,6 +25,10 @@ const ICONS: Record<OwnerView, ReactNode> = {
   summary: ic(<><path d="M4 19V5M4 19h16" /><path d="M8 16v-5M12 16V8M16 16v-3" /></>),
   accounts: ic(<><path d="M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 21h18" /></>),
   invoices: ic(<><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6M9 16h3" /></>),
+  // Contratistas (4-nov, detrás de PAYPAL_PAYOUTS): pagarles con PayPal.
+  contractors: ic(<><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" /><path d="M16 11h6M19 8v6" /></>),
+  // Configuración (4-nov): los datos de la factura y los recordatorios automáticos.
+  settings: ic(<><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" /></>),
 };
 const LOGOUT_ICON = ic(<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></>);
 
@@ -36,7 +40,7 @@ function initials(name: string | undefined): string {
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "·";
 }
 
-export default function OwnerSidebar({ view, onNavigate, company, companies, onSwitch, preview, open, onClose }: {
+export default function OwnerSidebar({ view, onNavigate, company, companies, onSwitch, preview, open, onClose, hidden = [] }: {
   view: OwnerView;
   onNavigate: (v: OwnerView) => void;
   company: Company;
@@ -45,6 +49,7 @@ export default function OwnerSidebar({ view, onNavigate, company, companies, onS
   preview: boolean;           // vista previa del bookkeeper: ni selector ni "Salir" (sale por la franja de arriba)
   open: boolean;              // en celular, el cajón
   onClose: () => void;
+  hidden?: OwnerView[];       // pestañas apagadas (p. ej. Contratistas sin PAYPAL_PAYOUTS)
 }) {
   const { t } = useTranslation();
   const [hover, setHover] = useState(false);
@@ -121,7 +126,7 @@ export default function OwnerSidebar({ view, onNavigate, company, companies, onS
           )}
         </div>
         <div className="space-y-0.5">
-          {OWNER_ORDER.map((v) => {
+          {OWNER_ORDER.filter((v) => !hidden.includes(v)).map((v) => {
             const active = view === v;
             return (
               <button key={v} onClick={() => { onNavigate(v); onClose(); }} aria-label={t(`owner.nav.${v}`)}

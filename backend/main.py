@@ -2921,9 +2921,15 @@ import owner_portal  # noqa: E402
 import paypal  # noqa: E402  (PayPal, una cuenta más del libro: Paso 3)
 import invoices  # noqa: E402  (Cobros: las facturas del dueño, Paso 5)
 import voice_invoice  # noqa: E402  (cobro por voz, Paso 6)
+import invoice_reminders  # noqa: E402  (recordatorios de cobro y QR de pago)
+import paypal_disputes  # noqa: E402  (disputas de PayPal, 3-nov)
+import invoice_offline  # noqa: E402  (pagos y devoluciones fuera de PayPal, 3-nov)
+import invoice_series  # noqa: E402  (facturas recurrentes, 4-nov)
+import contractor_payouts  # noqa: E402  (pagos a contratistas con Payouts, detrás de PAYPAL_PAYOUTS; 4-nov)
 
 for _r in [*owner_portal.router.routes, *month_close.router.routes, *paypal.router.routes, *invoices.router.routes,
-           *voice_invoice.router.routes]:
+           *voice_invoice.router.routes, *invoice_reminders.router.routes, *paypal_disputes.router.routes,
+           *invoice_offline.router.routes, *invoice_series.router.routes, *contractor_payouts.router.routes]:
     app.add_api_route(_r.path, _r.endpoint, methods=sorted(_r.methods), name=_r.name)
 # Un cambio a un movimiento de un mes CERRADO, venga de donde venga → 409 {"detail": "month_closed", "month"}.
 app.add_exception_handler(month_close.MonthClosedError, month_close.on_month_closed)

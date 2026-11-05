@@ -11,6 +11,8 @@ Cómo entra cada movimiento (decisiones de Jose, 30 y 31-oct) — en este orden,
        · venta (T00xx que entra)      → ingreso por el BRUTO, "Gross receipts or sales" (IRS: el 1099-K es bruto)
        · su comisión (`fee_amount`)   → fila aparte en "Merchant fees" (gasto; un reembolso de comisión la resta)
        · reembolso (T1107)            → "Returns and allowances" (resta del ingreso: `reports.signed_amount`)
+       · disputa perdida (T1106/T1201 que sale) → igual; contracargo revertido o repuesto (T1202/T1205 que entra) → la
+         misma cuenta, sumando (3-nov; `paypal_disputes.py`)
        · retiro al banco (T04xx) / depósito desde el banco (T03xx) → "Transfer", fuera del P&L (el Paso 4 lo empareja)
        · retenciones (T21xx)          → no se asientan: el dinero no salió del negocio
   3. lo demás (un pago enviado, el saldo inicial T1900 de una cuenta de prueba…) → el detector de transferencias y, si
@@ -111,7 +113,9 @@ def api(method: str, path: str, **kw) -> dict:
     """Una llamada a la API de PayPal con el token de la app (Invoicing la usa). Error → `PayPalError(name)`."""
     try:
         with httpx.Client(base_url=_BASES[environment()], timeout=30) as http:
-            h = {"Authorization": f"Bearer {_access_token(http)}", "Content-Type": "application/json"}
+            h = {"Authorization": f"Bearer {_access_token(http)}"}
+            if "files" not in kw:          # multipart (acciones de disputa): el límite lo pone httpx
+                h["Content-Type"] = "application/json"
             r = http.request(method, path, headers={**h, **kw.pop("headers", {})}, **kw)
     except httpx.HTTPError:
         raise PayPalError("network")
@@ -194,12 +198,21 @@ def rows_for(d: dict) -> list[dict]:
     def add(pid: str, desc: str, amount: Decimal, preset):
         if amount != 0:
             rows.append({"paypal_id": pid, "date": day, "description": desc, "signed": amount,
-                         "event_code": code, "preset": preset})
+                         "event_code": code, "preset": preset,
+                         "reference": i.get("paypal_reference_id")})    # de una devolución: el cobro original
 
     if code.startswith("T00") and gross > 0:
         add(tid, f"PAYPAL PAYMENT FROM {who}".strip(), gross, (AccountType.REVENUE, SALE))
     elif code == "T1107" and gross < 0:
         add(tid, f"PAYPAL REFUND TO {who}".strip(), gross, (AccountType.REVENUE, REFUND))
+    # Disputas (3-nov): el dinero que PayPal le devuelve al cliente resta de la venta, como un reembolso; el que vuelve
+    # al negocio (contracargo revertido o reembolsado por PayPal) la repone. Misma cuenta: el neto queda en la sección.
+    elif code in ("T1106", "T1201") and gross < 0:
+        add(tid, f"PAYPAL {'CHARGEBACK' if code == 'T1201' else 'PAYMENT REVERSAL'} {who}".strip(), gross,
+            (AccountType.REVENUE, REFUND))
+    elif code in ("T1202", "T1205") and gross > 0:
+        add(tid, f"PAYPAL CHARGEBACK {'REVERSAL' if code == 'T1202' else 'REIMBURSEMENT'} {who}".strip(), gross,
+            (AccountType.REVENUE, REFUND))
     elif code.startswith("T04"):
         add(tid, "PAYPAL TRANSFER TO BANK", gross, (AccountType.NON_PL, "Transfer"))
     elif code.startswith("T03"):
@@ -266,7 +279,7 @@ def insert_row(session: Session, company: Company, r: dict, rules: list, counts:
     session.add(tx)
     session.flush()
     session.add(PayPalEntry(company_id=company.id, paypal_id=r["paypal_id"], event_code=r["event_code"],
-                            transaction_id=tx.id))
+                            transaction_id=tx.id, reference_id=r.get("reference")))
     counts[key] = counts.get(key, 0) + 1
     counts["new"] = counts.get("new", 0) + 1
     return tx
@@ -778,7 +791,8 @@ def paypal_credentials(company_id: int, payload: OwnKeys, user: User = Depends(c
 # Sin `PAYPAL_WEBHOOK_BASE_URL` (en local) no se suscribe nada y sigue la consulta. Cada conexión tiene su dirección: una
 # app de otra cuenta firma con SU webhook, y la firma se verifica con las llaves de esa misma conexión.
 
-WEBHOOK_EVENTS = ("INVOICING.INVOICE.PAID", "INVOICING.INVOICE.REFUNDED", "INVOICING.INVOICE.CANCELLED")
+WEBHOOK_EVENTS = ("INVOICING.INVOICE.PAID", "INVOICING.INVOICE.REFUNDED", "INVOICING.INVOICE.CANCELLED",
+                  "CUSTOMER.DISPUTE.CREATED", "CUSTOMER.DISPUTE.UPDATED", "CUSTOMER.DISPUTE.RESOLVED")   # ✅ nombres oficiales
 
 
 def ensure_webhook(session: Session, conn: PayPalConnection) -> None:
