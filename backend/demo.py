@@ -391,7 +391,10 @@ def reseed_paypal_demo(session: Session) -> dict:
         old = [r[0] for r in conn.execute(text("SELECT id FROM company WHERE firm_id = :f"), {"f": tid})]
         counts: dict[str, int] = {}
         _delete(conn, "company", old, counts)
-        books = seed_visitor_books(session, session.get(Firm, tid), _system_user(session, TOUR_UID), strict=True, linked=True)
+        firm = session.get(Firm, tid)
+        firm.name = "Harbor Point Bookkeeping"   # el nombre de `build_tour` con PAYPAL_DEMO (la visita del 3-nov tenía el viejo)
+        session.add(firm)
+        books = seed_visitor_books(session, firm, _system_user(session, TOUR_UID), strict=True, linked=True)
         session.commit()
         out["tour"] = {"firm": tid, "books_removed": len(old), "books_seeded": [b.name for b in books]}
     waiting = session.exec(select(DemoOffice.firm_id).where(DemoOffice.kind == "pool")).all()
