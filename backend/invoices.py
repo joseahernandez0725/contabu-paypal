@@ -301,6 +301,24 @@ def _out(inv: Invoice, customers: dict[int, InvoiceCustomer], today: date, offli
                         "in_bank": offline.bank_tx_id is not None} if offline else None}
 
 
+def payer_history(session: Session, company_id: int) -> dict[int, dict]:
+    """Cómo PAGA cada cliente (5-nov; la idea de `invoice-chase`): de sus facturas cobradas, cuántas después del
+    vencimiento, por SQL. El CÓDIGO elige el tono del recordatorio con esto; la IA solo recibe el tono, nunca el historial.
+    on_time = nunca tarde · sometimes_late = hasta la mitad tarde · often_late = más de la mitad (→ tono firme) · new."""
+    late = (func.date(Invoice.paid_at) > Invoice.due_date)
+    rows = session.exec(
+        select(Invoice.customer_id, func.count(Invoice.id), func.coalesce(func.sum(case((late, 1), else_=0)), 0))
+        .where(Invoice.company_id == company_id).where(Invoice.status.in_(PAID_ANY)).where(Invoice.paid_at.is_not(None))
+        .where(Invoice.customer_id.is_not(None)).group_by(Invoice.customer_id)
+    ).all()
+    out = {}
+    for cid, paid, n_late in rows:
+        kind = "on_time" if n_late == 0 else "sometimes_late" if n_late * 2 <= paid else "often_late"
+        out[cid] = {"paid": int(paid), "late": int(n_late), "kind": kind,
+                    "tone": "firm" if kind == "often_late" else "friendly"}
+    return out
+
+
 def _view(session: Session, company_id: int) -> dict:
     """La lista y sus cifras. Las cifras salen de SQL (regla 1): por cobrar, vencidas y cobrado en el año."""
     today = date.today()
@@ -333,7 +351,10 @@ def _view(session: Session, company_id: int) -> dict:
     refs = frozenset(session.exec(select(PayPalEntry.reference_id).where(PayPalEntry.company_id == company_id)
                                   .where(PayPalEntry.event_code.in_(REFUND_CODES))
                                   .where(PayPalEntry.reference_id.is_not(None))).all())
-    return {"invoices": [_out(i, customers, today, offline.get(i.id), refs) for i in invs],
+    history = payer_history(session, company_id)
+    new = {"paid": 0, "late": 0, "kind": "new", "tone": "friendly"}
+    return {"invoices": [{**_out(i, customers, today, offline.get(i.id), refs),
+                          "payer": history.get(i.customer_id, new) if i.customer_id else None} for i in invs],
             "summary": {"outstanding": str(open_), "overdue": int(overdue), "collected_this_year": str(paid_year)},
             "paypal_connected": conn is not None}
 

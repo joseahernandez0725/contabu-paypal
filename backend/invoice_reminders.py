@@ -36,7 +36,7 @@ import nemotron
 import paypal
 from auth import current_user, owned_company
 from db import get_session
-from invoices import OPEN, _connect, _fail, _owner_only, _view
+from invoices import OPEN, _connect, _fail, _owner_only, _view, payer_history
 from models import Company, Invoice, InvoiceCustomer, User
 
 router = APIRouter()
@@ -96,7 +96,7 @@ def send_reminder(company_id: int, invoice_id: int, user: User = Depends(current
 
 class DraftIn(BaseModel):
     lang: str = "en"
-    tone: str = "friendly"      # "friendly" | "firm"
+    tone: str = "auto"          # "friendly" | "firm" | "auto" (lo elige el código con el historial de pago)
 
 
 class DraftOut(BaseModel):
@@ -178,7 +178,9 @@ def draft_reminder(company_id: int, invoice_id: int, payload: DraftIn, user: Use
     company: Company = _owner_only(company_id, user, session)
     inv = _open_invoice(session, company_id, invoice_id)
     lang = "es" if payload.lang == "es" else "en"
-    tone = "firm" if payload.tone == "firm" else "friendly"
+    # "auto" (5-nov): el tono lo elige el CÓDIGO con el historial de pago del cliente (`invoices.payer_history`).
+    payer = payer_history(session, company_id).get(inv.customer_id) if inv.customer_id else None
+    tone = payload.tone if payload.tone in ("friendly", "firm") else (payer or {}).get("tone", "friendly")
     try:
         agent_calls.check_cap(session, company)
     except agent_calls.CapReached:
@@ -215,8 +217,13 @@ def draft_reminder(company_id: int, invoice_id: int, payload: DraftIn, user: Use
               "link": inv.recipient_view_url or ""}
     subject, body = fill(draft.subject, values), fill(draft.body, values)
     mailto = (f"mailto:{c.email}?subject={quote(subject)}&body={quote(body)}" if c else None)
+    u = reply.usage or nemotron.Usage(model=nemotron.model_name())
     return {"subject": subject, "body": body, "mailto": mailto, "to": c.email if c else None,
-            "sent_to_ai": user_msg}
+            "sent_to_ai": user_msg, "tone": tone, "payer": payer,
+            # Para "What the AI did": la llamada real. Enviar es del dueño (su correo, o el recordatorio de PayPal:
+            # `send_invoice_reminder` en el Agent Toolkit, que la IA nunca recibe).
+            "ai": {"model": u.model, "latency_ms": u.latency_ms, "tokens": u.prompt_tokens + u.completion_tokens,
+                   "cost_usd": u.cost_usd, "waits_for_owner": "send_invoice_reminder"}}
 
 
 # ── 3. QR de pago ───────────────────────────────────────────────────────────────────────────────

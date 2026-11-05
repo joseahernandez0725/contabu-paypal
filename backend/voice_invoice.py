@@ -32,6 +32,7 @@ from sqlmodel import Session, select
 
 import agent_calls
 import nemotron
+import paypal_toolkit
 from db import get_session
 from invoices import MAX_AMOUNT, _customer_out, _owner_only
 from models import Company, InvoiceCustomer, User
@@ -226,6 +227,20 @@ def parse_voice(company_id: int, payload: VoiceIn, user: User = Depends(current_
     agent_calls.record(session, company, "invoice_voice", reply.usage, user_id=user.id,
                        items_out=1, items_valid=int(not warnings or warnings == ["due_default"]))
     session.commit()
+    # El borrador como la herramienta `create_invoice` del PayPal Agent Toolkit (5-nov): el código la llena con lo que
+    # validó y el cliente guardado, y la valida con el esquema oficial. Nada se crea ni se envía aquí.
+    toolkit = None
+    if chosen and fields["amount"] and fields["concept"]:
+        try:
+            toolkit = paypal_toolkit.draft_call(customer_name=chosen.name, customer_email=chosen.email,
+                                                concept=fields["concept"], amount=fields["amount"], business_name=company.name)
+        except ValueError:
+            warnings.append("toolkit_invalid")
+    u = reply.usage or nemotron.Usage(model=nemotron.model_name())
     return {"needs_customer": chosen is None, "candidates": [_customer_out(c) for c in named] if chosen is None else [],
             "customer": _customer_out(chosen) if chosen else None, "fields": fields, "warnings": warnings,
-            "sent_to_ai": masked}
+            "sent_to_ai": masked, "toolkit": toolkit,
+            # Lo que hizo la IA, para el panel "What the AI did": modelo, tiempo y costo REALES de esta llamada.
+            "ai": {"model": u.model, "latency_ms": u.latency_ms, "tokens": u.prompt_tokens + u.completion_tokens,
+                   "cost_usd": u.cost_usd, "offered_tools": paypal_toolkit.ai_tools(),
+                   "waits_for_owner": "send_invoice"}}

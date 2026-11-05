@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { voiceInvoice, type VoiceResult } from "../../api";
 import { BTN_SECONDARY, BTN_SMALL_PRIMARY } from "../PageKit";
+import AiTrace from "./AiTrace";
 
 // DICTAR LA FACTURA (FASE 16 Paso 6). El micrófono usa la Web Speech API del navegador (gratis; en Chrome el audio lo
 // procesa el navegador con su servicio, no ContaBu). Si no existe (algunos navegadores), el dictado del teclado escribe
@@ -28,6 +29,7 @@ export default function VoiceDictation({ customerId, onFill }: {
   const [listening, setListening] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "info" | "warn" | "error"; text: string } | null>(null);
+  const [last, setLast] = useState<VoiceResult | null>(null);   // la última respuesta, para "What the AI did"
   const rec = useRef<Rec | null>(null);
   const Rec = recognizer();
   useEffect(() => () => rec.current?.stop(), []);
@@ -50,6 +52,7 @@ export default function VoiceDictation({ customerId, onFill }: {
     try {
       const r = await voiceInvoice(text.trim(), lang, customerId || undefined);
       onFill(r);
+      setLast(r);
       if (r.needs_customer) setMsg({ tone: "warn", text: r.candidates.length ? t("owner.voice.pickOne") : t("owner.voice.noCustomer") });
       else if (r.warnings.length)
         setMsg({ tone: "info", text: `${t("owner.voice.filled")} ${r.warnings.map((w) => t(`owner.voice.warn.${w}`, { defaultValue: w })).join(" ")}` });
@@ -89,6 +92,15 @@ export default function VoiceDictation({ customerId, onFill }: {
         <span className="text-[11px] text-slate-500">{t("owner.voice.privacy")} {t("owner.voice.privacyLimit")}</span>
       </div>
       {msg && <p className={`text-xs ${msg.tone === "error" ? "text-rose-700" : msg.tone === "warn" ? "text-amber-800" : "text-slate-700"}`}>{msg.text}</p>}
+      {last?.ai && last.fields && <AiTrace ai={last.ai} steps={[
+        { label: t("owner.ai.voice.read"), detail: last.sent_to_ai },
+        last.toolkit
+          ? { label: t("owner.ai.voice.tool", { tool: last.toolkit.tool, toolkit: last.toolkit.toolkit }),
+              detail: t("owner.ai.voice.toolDetail", { amount: last.fields.amount, concept: last.fields.concept, email: last.customer?.email ?? "—" }) }
+          : { label: t("owner.ai.voice.noTool"), tone: "warn" as const },
+        { label: t("owner.ai.voice.checked"), detail: t("owner.ai.voice.checkedDetail", { date: last.fields.due_date ?? "—" }) },
+        { label: t("owner.ai.voice.waits", { tool: last.ai.waits_for_owner ?? "send_invoice" }), tone: "wait" as const },
+      ]} />}
     </div>
   );
 }

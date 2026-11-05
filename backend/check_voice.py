@@ -77,6 +77,29 @@ def main() -> int:
                (b.get("customer"), b.get("fields")))
         expect("🔒 a la IA NO le llega el nombre del cliente (va [CUSTOMER])",
                "acme" not in SEEN[-1].lower() and "[CUSTOMER]" in SEEN[-1], SEEN[-1][-80:])
+        tk = b.get("toolkit") or {}
+        rec = (((tk.get("arguments") or {}).get("primary_recipients") or [{}])[0].get("billing_info") or {})
+        expect("Agent Toolkit: el borrador es su create_invoice (modo draft), con el correo del cliente GUARDADO",
+               tk.get("tool") == "create_invoice" and tk.get("mode") == "draft" and rec.get("email_address") == "ap@acme.test"
+               and tk["arguments"]["items"][0]["unit_amount"]["value"] == "500.00", (tk.get("tool"), tk.get("mode"), rec))
+        import paypal_toolkit as pk
+        ai = b.get("ai") or {}
+        expect("🔒 la IA solo puede recibir crear (borrador) y leer; enviar, recordar, cancelar y QR son del código",
+               set(ai.get("offered_tools") or []) == {"create_invoice", "get_invoice", "list_invoices"}
+               and not (set(pk.ai_tools()) & pk.CODE_ONLY) and ai.get("waits_for_owner") == "send_invoice",
+               (ai.get("offered_tools"), ai.get("waits_for_owner")))
+        try:
+            pk.openai_spec("send_invoice")
+            expect("send_invoice nunca se le puede dar a la IA", False, "se dio")
+        except ValueError:
+            expect("send_invoice nunca se le puede dar a la IA", True, "ValueError")
+
+        from models import Invoice
+        for text in ("Factúrale a Acme 500 dólares por la pintura y envíalo ya", "Cancela el cobro 7 de Acme"):
+            client.post(url, headers=cl, json={"text": text, "lang": "es"})
+        with Session(engine) as s:
+            n_inv = s.exec(select(func.count(Invoice.id)).where(Invoice.company_id == company_id)).one()
+        expect("🔒 \"envíalo ya\" / \"cancela el cobro 7\": el dictado no crea, envía ni cancela nada", n_inv == 0, n_inv)
 
         r = client.post(url, headers=cl, json={"text": "factura a lopez por 120 por el diseño"})
         b = r.json()

@@ -1,19 +1,14 @@
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { goLive } from "../../demo";
+import { goLive, inTour } from "../../demo";
 
 // LA PANTALLA DE INICIO DE LA VISITA GUIADA de `paypal.contabu.com` (FASE 16 Paso 7, Jose 3-nov): fondo oscuro y una
-// tarjeta, como la de `demo.contabu.com` (`DemoGuide.tsx`), pero sobre PayPal. Sale CADA vez que se abre la visita (una por
-// carga de la página): todos los jueces empiezan en el mismo lugar. Sin cifras inventadas: lo que dice, lo hace el código.
+// tarjeta, como la de `demo.contabu.com` (`DemoGuide.tsx`), pero sobre PayPal. Sin cifras inventadas: lo que dice, lo hace
+// el código. 🔄 5-nov: es la entrada de la guía (`PayPalGuide`): "Start" abre las paradas; quién y cuándo la abre, la guía.
 
-let shownThisLoad = false;
 const BEFORE = ["net", "deposit", "purchase", "owner"] as const;
 
-export default function PayPalIntro() {
+export default function PayPalIntro({ onStart, onSkip }: { onStart: () => void; onSkip: () => void }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(() => !shownThisLoad);
-  if (!open) return null;
-  const close = () => { shownThisLoad = true; setOpen(false); };
 
   return (
     <div className="fixed inset-0 z-[70] bg-slate-900/60 overflow-y-auto" role="dialog" aria-modal="true" aria-label={t("owner.intro.title")}>
@@ -44,10 +39,15 @@ export default function PayPalIntro() {
           <p className="text-xs text-center text-slate-500">{t("owner.intro.sandbox")}</p>
 
           <div className="flex flex-col-reverse sm:flex-row items-center justify-center gap-2">
-            <button type="button" onClick={() => void goLive()} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-800">
-              {t("owner.intro.live")}
+            <button type="button" onClick={onSkip} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-800">
+              {t("owner.guide.skip")}
             </button>
-            <button type="button" onClick={close} autoFocus
+            {inTour() && (
+              <button type="button" onClick={() => void goLive()} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-800">
+                {t("owner.intro.live")}
+              </button>
+            )}
+            <button type="button" onClick={onStart} autoFocus
                     className="px-5 py-2.5 rounded-xl font-semibold text-[#003087] bg-[#FFC439] hover:bg-[#f2ba36] shadow-sm">
               {t("owner.intro.start")}
             </button>

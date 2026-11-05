@@ -15,7 +15,8 @@ import Sidebar, { viewLabel, type View } from "./components/Sidebar";
 import { DEMO_MODE, PAYPAL_DEMO, ENTER_CODE_EVENT, openDemoGuide, setTouring, type DemoDoor } from "./demo";
 import { AccessCodeScreen, TourBanner, TourMissing } from "./components/DemoDoors";
 import DemoGuide from "./components/DemoGuide";
-import OwnerApp, { OWNER_PREVIEW_EVENT } from "./components/owner/OwnerApp";
+import OwnerApp, { OWNER_PREVIEW_EVENT, OWNER_VIEW_EVENT } from "./components/owner/OwnerApp";
+import PayPalGuide from "./components/owner/PayPalGuide";
 import PayPalTour from "./components/owner/PayPalTour";
 import type { OwnerView } from "./components/owner/OwnerSidebar";
 import { PAYPAL_FROM_KEY } from "./components/owner/ConnectPayPal";
@@ -218,13 +219,24 @@ function App() {
 
   // EL PORTAL DEL DUEÑO (FASE 16): lo elige el rol del libro ABIERTO, no `firm == null` (un contador que además
   // es cliente de otro libro también funciona). El bookkeeper lo ve en vista previa desde Ajustes.
+  // La guía con foco de `paypal.contabu.com` (5-nov): recorre el portal Y la consola, así que vive fuera de las dos
+  // cáscaras, en la MISMA posición en ambas (segundo hijo del fragmento) para no reiniciarse al cruzar de una a otra.
+  const paypalGuide = PAYPAL_DEMO && company && company.role !== "CLIENT" ? (
+    <PayPalGuide
+      goOwner={(v) => { setOwnerStart(v); setOwnerPreview(true); window.dispatchEvent(new CustomEvent(OWNER_VIEW_EVENT, { detail: v })); }}
+      goConsole={(v) => { setOwnerPreview(false); setView(v); }} />
+  ) : null;
+
   if (company && (company.role === "CLIENT" || ownerPreview)) {
     return (
-      <OwnerApp key={company.id} company={company} companies={companies} onSwitch={switchCompany}
-                onExitPreview={company.role === "CLIENT" ? undefined : () => setOwnerPreview(false)}
-                onOpenConsole={company.role === "CLIENT" ? undefined : (v) => { setOwnerPreview(false); setView(v); }}
-                notice={ppNotice?.from === "owner" ? { ...ppNotice, onClose: () => setPpNotice(null) } : null}
-                initialView={ownerStart} />
+      <>
+        <OwnerApp key={company.id} company={company} companies={companies} onSwitch={switchCompany}
+                  onExitPreview={company.role === "CLIENT" ? undefined : () => setOwnerPreview(false)}
+                  onOpenConsole={company.role === "CLIENT" ? undefined : (v) => { setOwnerPreview(false); setView(v); }}
+                  notice={ppNotice?.from === "owner" ? { ...ppNotice, onClose: () => setPpNotice(null) } : null}
+                  initialView={ownerStart} />
+        {paypalGuide}
+      </>
     );
   }
 
@@ -236,6 +248,7 @@ function App() {
   // ⚠️ La barra de arriba mide EXACTAMENTE h-14 (56 px), igual que el header de antes: la hoja
   // (`Sheet.tsx`, del área Movimientos) calcula su alto como `100vh - 132px` contando con ella.
   return (
+    <>
     <div className="min-h-screen flex bg-slate-50 text-slate-900">
       <Sidebar
         view={view}
@@ -355,6 +368,8 @@ function App() {
           vivo, ni el "Guide" de arriba ni la lista de antes, `DemoTour`, que se borró). */}
       {touring && !PAYPAL_DEMO && <DemoGuide onNavigate={setView} onSidebar={onGuideSidebar} onOpenRow={(id) => openInSheet({ id })} />}
     </div>
+    {paypalGuide}
+    </>
   );
 }
 

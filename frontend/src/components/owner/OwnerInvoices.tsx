@@ -136,11 +136,12 @@ export default function OwnerInvoices({ preview, businessName, autoOpen = 0 }: {
         <Kpi label={t("owner.invoices.outstandingTitle")} value={money(Number(v.summary.outstanding))} accent="border-t-sky-500" />
         <Kpi label={t("owner.invoices.overdueTitle")} value={String(v.summary.overdue)} accent={v.summary.overdue ? "border-t-rose-500" : "border-t-slate-300"}
              tone={v.summary.overdue ? "text-rose-700" : "text-slate-900"} />
-        <Kpi label={t("owner.invoices.collectedTitle")} value={money(Number(v.summary.collected_this_year))} accent="border-t-emerald-500" tone="text-emerald-700" />
+        <Kpi label={t("owner.invoices.collectedTitle")} value={money(Number(v.summary.collected_this_year))} accent="border-t-emerald-500" tone="text-emerald-700" tour="pp-collected" />
       </div>
       {!open && (
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => setOpen(true)} disabled={blocked} className={BTN_PRIMARY} title={preview ? t("owner.preview.disabled") : undefined}>
+          <button onClick={() => setOpen(true)} disabled={blocked} className={BTN_PRIMARY} title={preview ? t("owner.preview.disabled") : undefined}
+                  data-tour="pp-new-invoice">
             + {t("owner.invoices.new")}
           </button>
           {!preview && (
@@ -349,7 +350,8 @@ function Row({ inv, day, preview, busy, confirming, autoQr = false, onAskSend, o
   const name = inv.customer?.name ?? "—";
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "·";
   return (
-    <li className={`px-3 py-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm border-s-4 ${ACCENT[key] ?? "border-s-slate-200"}`}>
+    <li data-tour={inv.status === "PAID" && inv.in_books ? "pp-paid-invoice" : undefined}
+        className={`px-3 py-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm border-s-4 ${ACCENT[key] ?? "border-s-slate-200"}`}>
       <span className="size-9 shrink-0 rounded-full bg-slate-100 text-slate-600 text-xs font-bold flex items-center justify-center">{initials}</span>
       <span className="min-w-0 flex-1">
         <span className="block font-semibold text-slate-900 truncate">{name}</span>
@@ -489,9 +491,9 @@ function RefundOffline({ inv, busy, onView }: { inv: OwnerInvoice; busy: boolean
   );
 }
 
-function Kpi({ label, value, accent, tone = "text-slate-900" }: { label: string; value: string; accent: string; tone?: string }) {
+function Kpi({ label, value, accent, tone = "text-slate-900", tour }: { label: string; value: string; accent: string; tone?: string; tour?: string }) {
   return (
-    <div className={`bg-white rounded-xl border border-slate-200 border-t-4 ${accent} px-4 py-3`}>
+    <div data-tour={tour} className={`bg-white rounded-xl border border-slate-200 border-t-4 ${accent} px-4 py-3`}>
       <div className="text-xs text-slate-500">{label}</div>
       <div className={`text-2xl font-semibold mt-0.5 ${tone}`}>{value}</div>
     </div>

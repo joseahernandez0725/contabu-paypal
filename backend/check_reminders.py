@@ -86,7 +86,7 @@ def main() -> int:
         s.add(sent)
         s.add(draft)
         s.commit()
-        sent_id, draft_id = sent.id, draft.id
+        sent_id, draft_id, customer_id = sent.id, draft.id, c.id
     base = f"/api/owner/companies/{company_id}/invoices"
     try:
         print("\n  --- recordatorios y QR (sin red) ---")
@@ -119,6 +119,27 @@ def main() -> int:
                r.status_code)
         r = client.post(f"{base}/{draft_id}/reminder-draft", headers=cl, json={"lang": "en"})
         expect("un borrador (no enviado) no se recuerda → 409", r.status_code == 409, r.status_code)
+
+        # El tono lo elige el CÓDIGO con el historial de pago (5-nov): 2 de 3 cobradas tarde → "often_late" → firme.
+        from datetime import datetime
+        with Session(engine) as s:
+            for n, (due, paid) in enumerate([(-40, -45), (-30, -20), (-15, -5)]):
+                s.add(Invoice(company_id=company_id, customer_id=customer_id, paypal_invoice_id=f"INV2-PAID{n}", concept="Past",
+                              amount=Decimal("100.00"), due_date=today + timedelta(days=due), status="PAID",
+                              paid_at=datetime.combine(today + timedelta(days=paid), datetime.min.time())))
+            s.commit()
+        ANSWERS[:] = [GOOD]
+        r = client.post(f"{base}/{sent_id}/reminder-draft", headers=cl, json={"lang": "en"})
+        b = r.json()
+        expect("historial: 2 de 3 tarde → 'often_late' y tono FIRME elegido por el código; la IA solo recibe el tono",
+               r.status_code == 200 and (b.get("payer") or {}).get("kind") == "often_late" and b.get("tone") == "firm"
+               and SEEN[-1] == "LANGUAGE: en\nTONE: firm\nSTATE: overdue", (b.get("payer"), b.get("tone"), SEEN[-1:]))
+        expect("la respuesta trae la llamada de la IA para el panel (espera a send_invoice_reminder)",
+               (b.get("ai") or {}).get("waits_for_owner") == "send_invoice_reminder", b.get("ai"))
+        lst = client.get(base, headers=cl).json()
+        row = next((i for i in lst.get("invoices", []) if i["id"] == sent_id), {})
+        expect("la lista de Cobros trae el historial del cliente (para sugerir el tono)",
+               (row.get("payer") or {}) == {"paid": 3, "late": 2, "kind": "often_late", "tone": "firm"}, row.get("payer"))
 
         PAYPAL.clear()
         r = client.post(f"{base}/{sent_id}/remind", headers=cl)

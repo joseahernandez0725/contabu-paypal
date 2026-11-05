@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { uploadCsv, setTransactionsAccount, type BankConnection, type UploadResult } from "../api";
 import { SyncSummary, useBanks } from "./BankConnections";
 import { LiveOnly } from "./DemoDoors";   // visita guiada del demo: vincular un banco, solo en vivo (Firm, 23-oct)
+import { inTour, PAYPAL_DEMO } from "../demo";
 import PayPalCard from "./owner/PayPalCard";   // FASE 16: PayPal, una cuenta más del libro (junto a los bancos)
 import {
   BTN_GHOST, BTN_PRIMARY, BTN_SMALL_PRIMARY, DOT, DetailHeader, DetailSection, EmptyRow, ListCard, ListDetail, ListRow,
@@ -106,8 +107,11 @@ export default function Upload({ onDone }: { onDone: () => void }) {
         {down > 0 && <Stat value={down} label={t("page.banks.down", { count: down })} tone={TONE.problem} />}
       </PageHeader>
 
-      {/* PayPal del libro (FASE 16, tarjeta de la F16): ARRIBA, a la vista (Jose, 1-nov: clave en el demo). */}
-      <LiveOnly><PayPalCard canEdit /></LiveOnly>
+      {/* PayPal del libro (FASE 16, tarjeta de la F16): ARRIBA, a la vista (Jose, 1-nov: clave en el demo). En la visita de
+          `paypal.contabu.com` se ve en solo lectura (5-nov): es lo que la guía enseña (retiros y compras emparejados). */}
+      <div data-tour="pp-bank">
+        {inTour() && PAYPAL_DEMO ? <PayPalCard canEdit={false} /> : <LiveOnly><PayPalCard canEdit /></LiveOnly>}
+      </div>
 
       {banks.last && <SyncSummary s={banks.last} />}
       {banks.error && <div className="alert alert-error text-sm">{banks.error}</div>}

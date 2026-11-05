@@ -10,8 +10,7 @@ import ConnectPayPal from "./ConnectPayPal";
 import { monthLabel } from "./MonthCloseSection";
 import { getInvoices, money } from "../../api";
 import type { Company } from "../../types";
-import { inTour, PAYPAL_DEMO } from "../../demo";
-import PayPalIntro from "./PayPalIntro";
+import { PAYPAL_DEMO } from "../../demo";
 import type { View } from "../Sidebar";
 import PayPalTour from "./PayPalTour";
 import CardPaymentsWelcome from "./CardPaymentsWelcome";
@@ -32,6 +31,7 @@ import { DetailCard, DetailEmpty, DetailHeader, PageHeader, Stat } from "../Page
 // totales por categoría de cada mes CERRADO por el bookkeeper, y el mes en curso no aparece (Paso 2).
 
 export const OWNER_PREVIEW_EVENT = "contabu:owner-preview";
+export const OWNER_VIEW_EVENT = "contabu:owner-view";   // detail: OwnerView
 
 /** La consola pide la vista previa del portal (Ajustes → Dueño del negocio). La escucha App.tsx. */
 export function openOwnerPreview() {
@@ -54,6 +54,12 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
   useEffect(() => { getContractors().then((x) => setPayouts(x.enabled)).catch(() => setPayouts(false)); }, []);
   const [newInvoice, setNewInvoice] = useState(0);   // "+ Nueva factura" desde el Resumen: abre Cobros con el formulario
   useEffect(() => { setView(initialView); }, [initialView]);
+  // La guía de `paypal.contabu.com` (5-nov) pide una pantalla del portal aunque ya esté abierto.
+  useEffect(() => {
+    const go = (e: Event) => setView((e as CustomEvent<OwnerView>).detail);
+    window.addEventListener(OWNER_VIEW_EVENT, go);
+    return () => window.removeEventListener(OWNER_VIEW_EVENT, go);
+  }, []);
   const [menuOpen, setMenuOpen] = useState(false); // el cajón de la barra lateral (solo celular)
   const [home, setHome] = useState<OwnerHome | null>(null);
   const [error, setError] = useState(false);
@@ -98,7 +104,6 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
         </header>
 
         <main className="flex-1 w-full px-3 sm:px-4 py-3 space-y-3">
-          {PAYPAL_DEMO && inTour() && <PayPalIntro />}
           {PAYPAL_DEMO && home && view === "summary" && <CardPaymentsWelcome onInvoices={() => setView("invoices")} />}
           {PAYPAL_DEMO && home && <PayPalTour ownerView={view} onOwner={setView} onConsole={onOpenConsole} />}
           {notice && (

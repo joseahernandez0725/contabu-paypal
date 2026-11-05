@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoiceQR, recordOfflinePayment, remindInvoice, reminderDraft, stopAutoReminders, type InvoicesView, type OfflineMethod,
-         type OwnerInvoice } from "../../api";
+         type OwnerInvoice, type ReminderDraft } from "../../api";
 import { BTN_SECONDARY, BTN_SMALL_PRIMARY } from "../PageKit";
+import AiTrace from "./AiTrace";
 
 // COBRAR UNA FACTURA ABIERTA, en el portal del dueño (FASE 16, 1-nov; `backend/invoice_reminders.py`). Tres caminos:
 //  1. El recordatorio OFICIAL de PayPal: PayPal manda su correo estándar (no acepta texto propio). Uno cada 24 h.
@@ -25,8 +26,10 @@ export default function InvoiceCollect({ inv, busy, onView, autoQr = false }: {
   const [stopConfirm, setStopConfirm] = useState(false);   // detener los automáticos de ESTA factura (5-nov)
   const [err, setErr] = useState<string | null>(null);
   const [confirm, setConfirm] = useState(false);
-  const [tone, setTone] = useState<"friendly" | "firm">(inv.overdue ? "firm" : "friendly");
+  // El tono lo SUGIERE el código con el historial de pago del cliente (5-nov); el dueño lo puede cambiar.
+  const [tone, setTone] = useState<"friendly" | "firm">(inv.payer?.tone ?? (inv.overdue ? "firm" : "friendly"));
   const [msg, setMsg] = useState<{ subject: string; body: string } | null>(null);
+  const [draftAi, setDraftAi] = useState<ReminderDraft | null>(null);   // para "What the AI did"
   const [copied, setCopied] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
   const [paidOff, setPaidOff] = useState<{ method: OfflineMethod; day: string; note: string; amount: string; confirm: boolean }>(
@@ -112,10 +115,13 @@ export default function InvoiceCollect({ inv, busy, onView, autoQr = false }: {
             ))}
           </div>
           <button disabled={off} className={BTN_SECONDARY}
-                  onClick={() => void go("draft", () => reminderDraft(inv.id, lang, tone), (r) => { setMsg({ subject: r.subject, body: r.body }); setCopied(false); })}>
+                  onClick={() => void go("draft", () => reminderDraft(inv.id, lang, tone), (r) => { setMsg({ subject: r.subject, body: r.body }); setDraftAi(r); setCopied(false); })}>
             {working === "draft" ? t("owner.collect.drafting") : t(msg ? "owner.collect.redraft" : "owner.collect.draft")}
           </button>
         </div>
+        {inv.payer && inv.payer.kind !== "new" && (
+          <p className="mt-1.5 text-[11px] text-slate-500">{t(`owner.collect.payer.${inv.payer.kind}`, { late: inv.payer.late, paid: inv.payer.paid })}</p>
+        )}
         {msg && (
           <div className="mt-3 grid gap-2">
             <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t("owner.collect.subject")}
@@ -132,6 +138,13 @@ export default function InvoiceCollect({ inv, busy, onView, autoQr = false }: {
                 void navigator.clipboard?.writeText(`${msg.subject}\n\n${msg.body}`).then(() => setCopied(true)).catch(() => {});
               }}>{copied ? t("owner.collect.copied") : t("owner.collect.copy")}</button>
             </div>
+            <AiTrace ai={draftAi?.ai} steps={[
+              { label: t("owner.ai.reminder.tone", { tone: t(`owner.collect.${draftAi?.tone ?? tone}`) }),
+                detail: draftAi?.payer ? t(`owner.collect.payer.${draftAi.payer.kind}`, { late: draftAi.payer.late, paid: draftAi.payer.paid }) : undefined },
+              { label: t("owner.ai.reminder.read"), detail: draftAi?.sent_to_ai },
+              { label: t("owner.ai.reminder.filled") },
+              { label: t("owner.ai.voice.waits", { tool: draftAi?.ai?.waits_for_owner ?? "send_invoice_reminder" }), tone: "wait" },
+            ]} />
           </div>
         )}
       </section>

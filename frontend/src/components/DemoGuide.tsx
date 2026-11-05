@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getDemoIntro, getGuidePick, type DemoIntro } from "../api";
 import { goLive, OPEN_GUIDE_EVENT } from "../demo";
 import type { View } from "./Sidebar";
+import { bubblePosition, clickWhenReady, SpotlightBackdrop, useHole, useViewport, visible, waitFor } from "./Spotlight";
 
 // EL RECORRIDO GUIADO DEL DEMO (FASE 13, área Firm · 23-oct; aprobado por Jose sobre dos dibujos). Una pantalla de
 // inicio y 15 paradas: la pantalla se oscurece al 50 %, un recorte claro y redondeado sobre lo que hay que tocar, y
@@ -34,9 +35,6 @@ const STOPS: StopKey[] = ["who", "clients", "nav", "bank", "team", "book", "rule
 const SHIELDED: StopKey[] = ["bank", "book", "newrule", "notes", "row", "agents"];
 // Las que muestran una lista de líneas en la burbuja (`demoGuide.<clave>.l`).
 const LISTED: StopKey[] = ["nav", "book"];
-const PAD = 6;          // el aire alrededor de lo iluminado
-const GAP = 12;         // entre lo iluminado y la burbuja
-const BUBBLE_W = 340;
 
 const SEEN_KEY = "contabu.demoGuide.seen.v1";
 function readSeen(): boolean {
@@ -45,45 +43,6 @@ function readSeen(): boolean {
 function writeSeen() {
   try { window.sessionStorage.setItem(SEEN_KEY, "1"); } catch { /* modo privado: se ve otra vez, no pasa nada */ }
 }
-
-/** El primer elemento VISIBLE que cumple el selector (la barra lateral tiene una copia oculta en el celular). */
-function visible(sel: string): HTMLElement | null {
-  for (const el of Array.from(document.querySelectorAll<HTMLElement>(sel))) {
-    const r = el.getBoundingClientRect();
-    if (r.width > 0 && r.height > 0) return el;
-  }
-  return null;
-}
-async function waitFor(sel: string, ms = 4000): Promise<HTMLElement | null> {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    const el = visible(sel);
-    if (el) return el;
-    await new Promise((r) => window.setTimeout(r, 100));
-  }
-  return null;
-}
-async function clickWhenReady(sel: string, ms?: number): Promise<boolean> {
-  const el = await waitFor(sel, ms);
-  if (el) el.click();
-  return !!el;
-}
-
-/** El rectángulo de `el` recortado por los contenedores con scroll que lo cortan (un panel angosto, la grilla…):
- *  sin esto, el recorte iluminaría también lo que ese contenedor esconde. null si no se ve nada. */
-function clipped(el: HTMLElement): { top: number; left: number; right: number; bottom: number } | null {
-  const r = el.getBoundingClientRect();
-  let { top, left, right, bottom } = r;
-  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
-    const o = getComputedStyle(p);
-    if ([o.overflowX, o.overflowY].every((v) => v === "visible")) continue;
-    const c = p.getBoundingClientRect();
-    top = Math.max(top, c.top); left = Math.max(left, c.left); right = Math.min(right, c.right); bottom = Math.min(bottom, c.bottom);
-  }
-  return right > left && bottom > top ? { top, left, right, bottom } : null;
-}
-
-type Box = { top: number; left: number; width: number; height: number };
 
 // LAS DOS PRUEBAS MEDIDAS: un solo lugar, cada una con su fuente — docs/nebius/JUECES - IMPLEMENTACION TECNOLOGICA.md § 5
 // (los prompts finales, 24-oct). D2, el ciego del demo con el código que se entrega, 3 corridas: 14 · 15 · 14 de
@@ -110,22 +69,14 @@ export default function DemoGuide({ onNavigate, onSidebar, onOpenRow }: {
   openRowRef.current = onOpenRow;
   const pickRef = useRef<Promise<Pick | null> | null>(null);   // /demo/guide se pide una sola vez por recorrido
   const [target, setTarget] = useState<string | null>(null);
-  const [hole, setHole] = useState<Box | null>(null);
-  // El tamaño de la ventana se lee AL PINTAR (guardarlo al montar falla si el panel aún no tenía tamaño) y se
-  // vuelve a pintar al cambiar.
-  const [, repaint] = useReducer((x: number) => x + 1, 0);
-  useEffect(() => {
-    window.addEventListener("resize", repaint);
-    return () => window.removeEventListener("resize", repaint);
-  }, []);
-  const vp = { w: window.innerWidth, h: window.innerHeight };
+  const hole = useHole(target);   // el motor del foco vive en `Spotlight.tsx` (5-nov: lo comparte la guía de PayPal)
+  const vp = useViewport();
   const bubbleRef = useRef<HTMLDivElement>(null);
   const [bubbleH, setBubbleH] = useState(180);
 
   const close = useCallback(() => {
     setPhase(null);
     setTarget(null);
-    setHole(null);
     onSidebar(false);
     writeSeen();
   }, [onSidebar]);
@@ -166,7 +117,6 @@ export default function DemoGuide({ onNavigate, onSidebar, onOpenRow }: {
     let alive = true;
     const key = STOPS[phase];
     setTarget(null);
-    setHole(null);
     (async () => {
       onSidebar(key === "clients" || key === "nav");
       const getPick = () => (pickRef.current ??= getGuidePick().catch(() => null));
@@ -251,27 +201,6 @@ export default function DemoGuide({ onNavigate, onSidebar, onOpenRow }: {
     return () => { alive = false; };
   }, [phase, onNavigate, onSidebar]);
 
-  // Sigue a lo iluminado (scroll, cambio de tamaño, la barra que se ensancha) cuadro a cuadro.
-  useEffect(() => {
-    if (!target) return;
-    let raf = 0;
-    const tick = () => {
-      const el = visible(target);
-      const r = el ? clipped(el) : null;
-      const w = window.innerWidth, h = window.innerHeight;
-      setHole((prev) => {
-        if (!r) return null;
-        const top = Math.max(r.top - PAD, 4), left = Math.max(r.left - PAD, 4);
-        const box = { top, left, width: Math.min(r.right + PAD, w - 4) - left, height: Math.min(r.bottom + PAD, h - 4) - top };
-        return prev && Math.abs(prev.top - box.top) < 0.5 && Math.abs(prev.left - box.left) < 0.5
-          && Math.abs(prev.width - box.width) < 0.5 && Math.abs(prev.height - box.height) < 0.5 ? prev : box;
-      });
-      raf = requestAnimationFrame(tick);
-    };
-    tick();
-    return () => cancelAnimationFrame(raf);
-  }, [target]);
-
   // Tocar lo iluminado avanza (el clic sigue su camino: abre el menú, la fila…).
   useEffect(() => {
     if (typeof phase !== "number" || !target || SHIELDED.includes(STOPS[phase])) return;
@@ -296,25 +225,8 @@ export default function DemoGuide({ onNavigate, onSidebar, onOpenRow }: {
 
   const key = STOPS[phase];
   const centered = key === "who" || key === "live";
-  const mobile = vp.w < 640;
   const last = phase === STOPS.length - 1;
-
-  // Dónde va la burbuja: al lado de lo iluminado sin taparlo; en el celular, abajo (o arriba si lo iluminado está abajo).
-  let bubbleStyle: CSSProperties;
-  if (centered || !hole) {
-    bubbleStyle = { top: Math.max(16, (vp.h - bubbleH) / 2), left: Math.max(16, (vp.w - Math.min(440, vp.w - 32)) / 2), width: Math.min(440, vp.w - 32) };
-  } else if (mobile) {
-    const holeLow = hole.top + hole.height / 2 > vp.h / 2;
-    bubbleStyle = holeLow ? { top: 8, left: 8, right: 8 } : { bottom: 8, left: 8, right: 8 };
-  } else {
-    const clampTop = (y: number) => Math.min(Math.max(8, y), vp.h - bubbleH - 8);
-    const clampLeft = (x: number) => Math.min(Math.max(8, x), vp.w - BUBBLE_W - 8);
-    if (hole.left + hole.width + GAP + BUBBLE_W <= vp.w - 8) bubbleStyle = { top: clampTop(hole.top), left: hole.left + hole.width + GAP, width: BUBBLE_W };
-    else if (hole.left - GAP - BUBBLE_W >= 8) bubbleStyle = { top: clampTop(hole.top), left: hole.left - GAP - BUBBLE_W, width: BUBBLE_W };
-    else if (hole.top + hole.height + GAP + bubbleH <= vp.h - 8) bubbleStyle = { top: hole.top + hole.height + GAP, left: clampLeft(hole.left), width: BUBBLE_W };
-    else if (hole.top - GAP - bubbleH >= 8) bubbleStyle = { top: hole.top - GAP - bubbleH, left: clampLeft(hole.left), width: BUBBLE_W };
-    else bubbleStyle = { bottom: 8, right: 8, width: BUBBLE_W };   // lo iluminado ocupa casi todo: a la esquina
-  }
+  const bubbleStyle = bubblePosition(hole, centered, vp, bubbleH);
 
   const body = key === "finding" ? t(`demoGuide.finding.${pick?.kind ?? "finding"}`)
     : key === "proposal" ? (noProposal ? t("demoGuide.proposal.none") : t("demoGuide.proposal.b"))
@@ -334,19 +246,7 @@ export default function DemoGuide({ onNavigate, onSidebar, onOpenRow }: {
   return (
     <div className="fixed inset-0 z-[70] pointer-events-none" role="dialog" aria-modal="true" aria-label={title}>
       {/* Lo oscuro, con el recorte. Fuera del recorte nada recibe clics; dentro, sí (se avanza tocándolo). */}
-      {hole && !centered ? (
-        <>
-          <div className="pointer-events-none fixed rounded-xl ring-2 ring-white/90 transition-all duration-150"
-               style={{ ...hole, boxShadow: "0 0 0 9999px rgba(15, 23, 42, 0.5)" }} />
-          <div className="fixed pointer-events-auto" style={{ top: 0, left: 0, right: 0, height: hole.top }} />
-          <div className="fixed pointer-events-auto" style={{ top: hole.top + hole.height, left: 0, right: 0, bottom: 0 }} />
-          <div className="fixed pointer-events-auto" style={{ top: hole.top, left: 0, width: hole.left, height: hole.height }} />
-          <div className="fixed pointer-events-auto" style={{ top: hole.top, left: hole.left + hole.width, right: 0, height: hole.height }} />
-          {SHIELDED.includes(key) && <div className="fixed pointer-events-auto" style={hole} />}
-        </>
-      ) : (
-        <div className="fixed inset-0 bg-slate-900/50 pointer-events-auto" />
-      )}
+      <SpotlightBackdrop hole={hole} centered={centered} shielded={SHIELDED.includes(key)} />
 
       <div ref={bubbleRef} className="fixed pointer-events-auto rounded-2xl bg-white shadow-2xl border border-slate-200 p-4 space-y-2" style={bubbleStyle}>
         {/* Una barra delgada, sin números (25-oct): `role="progressbar"` para quien no ve la pantalla. */}

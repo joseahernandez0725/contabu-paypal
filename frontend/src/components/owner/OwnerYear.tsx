@@ -53,7 +53,7 @@ export default function OwnerYearView({ years, closed }: { years: Year[]; closed
   return (
     <div className="space-y-3">
       {/* Las cifras del año — sin utilidad ni diferencia: no es un P&L (Jose, 31-oct). */}
-      <div className="bg-white rounded-xl border border-slate-200 px-3 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-2">
+      <div data-tour="pp-year" className="bg-white rounded-xl border border-slate-200 px-3 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-2">
         {years.length > 1 ? (
           <select value={y.year} onChange={(e) => setPick(Number(e.target.value))} aria-label={t("owner.year.pick")}
                   className="text-sm font-semibold rounded-lg border border-slate-200 px-2 py-1">
@@ -75,7 +75,7 @@ export default function OwnerYearView({ years, closed }: { years: Year[]; closed
         <CumulativeChart months={y.months} lang={lang} />
       </DetailCard>
 
-      <div className="grid gap-3 lg:grid-cols-[3fr_2fr]">
+      <div data-tour="pp-categories" className="grid gap-3 lg:grid-cols-[3fr_2fr]">
         <DetailCard>
           <h3 className="text-sm font-semibold text-slate-900">{t("owner.year.whereOut")}</h3>
           <p className="text-xs text-slate-500 mb-2">{t("owner.year.whereOutSub", { year: y.year })}</p>
