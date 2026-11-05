@@ -377,6 +377,35 @@ def ensure_live_office(session: Session, user: User) -> None:
     session.commit()
 
 
+def reseed_paypal_demo(session: Session) -> dict:
+    """`paypal.contabu.com` (5-nov): pone el libro sembrado NUEVO de `demo_paypal.py` donde quedó el viejo, sin tocar a
+    ningún juez. · La VISITA: borra en cascada solo sus LIBROS y siembra el nuevo en la MISMA oficina, conectado como
+    antes (la oficina y su `DemoOffice` se quedan). · La PISCINA: las oficinas EN ESPERA (`kind="pool"`, sin juez) se
+    dan por vencidas, la limpieza de siempre las borra y se vuelve a llenar. Las ya asignadas (`live`) no cambian."""
+    if not PAYPAL_DEMO:
+        raise RuntimeError("reseed es solo del demo de PayPal (PAYPAL_DEMO)")
+    out: dict = {}
+    tid = tour_firm_id(session)
+    if tid is not None:
+        conn = session.connection()
+        old = [r[0] for r in conn.execute(text("SELECT id FROM company WHERE firm_id = :f"), {"f": tid})]
+        counts: dict[str, int] = {}
+        _delete(conn, "company", old, counts)
+        books = seed_visitor_books(session, session.get(Firm, tid), _system_user(session, TOUR_UID), strict=True, linked=True)
+        session.commit()
+        out["tour"] = {"firm": tid, "books_removed": len(old), "books_seeded": [b.name for b in books]}
+    waiting = session.exec(select(DemoOffice.firm_id).where(DemoOffice.kind == "pool")).all()
+    for fid in waiting:
+        f = session.get(Firm, fid)
+        f.demo_expires_at = _now() - timedelta(minutes=1)
+        session.add(f)
+    session.commit()
+    out["pool_expired"] = len(waiting)
+    out["cleanup"] = cleanup_expired_offices(session)
+    out["pool"] = refill_pool(session)
+    return out
+
+
 def pool_ready(session: Session) -> int:
     return int(session.exec(
         select(func.count(DemoOffice.id)).join(Firm, Firm.id == DemoOffice.firm_id)
@@ -854,12 +883,13 @@ _USAGE = """uso (siempre con DEMO_MODE=true y el DATABASE_URL de la base del DEM
   .venv/bin/python demo.py tour-proposals       solo el ④ sobre la visita que ya existe (guarda sus reglas propuestas)
   .venv/bin/python demo.py pool                 rellena las oficinas en espera hasta DEMO_POOL_SIZE
   .venv/bin/python demo.py status               qué hay: la visita, la piscina, los códigos canjeados
-  .venv/bin/python demo.py cleanup              borra lo vencido"""
+  .venv/bin/python demo.py cleanup              borra lo vencido
+  .venv/bin/python demo.py reseed               (solo PAYPAL_DEMO) el libro nuevo en la visita y en la piscina; los jueces no cambian"""
 
 
 if __name__ == "__main__":
     cmd, args = (sys.argv[1] if len(sys.argv) > 1 else ""), sys.argv[2:]
-    if cmd not in {"tour", "tour-proposals", "pool", "status", "cleanup"} or (args and args != ["--no-review"]):
+    if cmd not in {"tour", "tour-proposals", "pool", "status", "cleanup", "reseed"} or (args and args != ["--no-review"]):
         sys.exit(_USAGE)
     if not DEMO_MODE:
         sys.exit("Se niega: DEMO_MODE no está encendido (esto es solo para la base del demo).")
@@ -882,5 +912,7 @@ if __name__ == "__main__":
             print(refill_pool(s))
         elif cmd == "status":
             print(status(s))
+        elif cmd == "reseed":
+            print(reseed_paypal_demo(s))
         else:
             print(cleanup_expired_offices(s) or "nada vencido")
