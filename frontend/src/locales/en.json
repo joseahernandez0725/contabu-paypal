@@ -1657,13 +1657,18 @@
       "disconnected": "Disconnected",
       "connectedTitle_one": "1 account connected to ContaBu",
       "connectedTitle_other": "{{count}} accounts connected to ContaBu",
-      "connectedBody": "It's the same set of books {{name}} keeps: what flows through these accounts reaches your books and your bookkeeper sees it.",
+      "connectedBody": "These accounts feed the books kept by {{name}}: everything that flows through them reaches your books, and your bookkeeper sees it.",
       "noneConnected": "No accounts connected yet: connect your PayPal and link your bank.",
       "ppAvailable": "Available PayPal balance",
       "ppTotal": "Total balance: {{amount}}",
       "ppWithdraw": "Transfer to my bank",
       "ppWithdrawNote": "Money from your invoices stays in your PayPal balance. A standard transfer to your bank is free; an instant transfer costs 1.5% (minimum $0.50).",
       "noBanksHelp": "Link your bank so your transactions flow into your books automatically.",
+      "bookAccountStatement": "From uploaded statements",
+      "bookAccountLast": "last transaction {{date}}",
+      "ppLedger": "Your books: {{amount}} from {{count}} PayPal transactions since {{date}}.",
+      "ppDifference": "Difference with the balance: {{amount}}. Usually the balance before the first imported transaction.",
+      "ppMatches": "The balance matches your books.",
       "linkBank": "Link a bank",
       "linkBankNote": "Secure connection through Plaid: your credentials never pass through ContaBu. (Test mode: user_good / pass_good.)",
       "bankLinked": "{{bank}} is linked: its transactions now flow into your books.",
@@ -1806,6 +1811,7 @@
       "closeAnyway": "Close anyway",
       "confirmPending_one": "1 pending item will be shown to the owner as uncategorized.",
       "confirmPending_other": "{{count}} pending items will be shown to the owner as uncategorized.",
+      "confirmNegative": "Negative balance in its section, usually a classification error: {{list}}.",
       "reopen": "Reopen",
       "error": "Couldn't update the period. Please try again.",
       "waiting": "Settlement days: can be closed on {{date}}"
@@ -1892,6 +1898,24 @@
       "monthClosed": "That deposit is in a closed period: reopen it in Settings to match it.",
       "error": "Couldn't update the transfer. Please try again."
     },
+    "ai": {
+      "title": "What the AI did",
+      "meta": "{{model}} · {{secs}} s · {{cost}} · {{tokens}} tokens",
+      "voice": {
+        "read": "NVIDIA Nemotron read your dictation, with the customer's name hidden, and extracted the amount, due date and description:",
+        "tool": "Prepared the PayPal Agent Toolkit tool {{tool}} as a draft ({{toolkit}})",
+        "toolDetail": "{{amount}} for \"{{concept}}\" · billed to {{email}}, from your saved customer",
+        "noTool": "No draft yet: complete the amount, the description or the customer",
+        "checked": "ContaBu's code checked it: saved customer, valid amount, and the due date it computed",
+        "checkedDetail": "Due {{date}}. The AI never computes dates or totals.",
+        "waits": "{{tool}} waits for you: nothing is sent until you review it and confirm"
+      },
+      "reminder": {
+        "tone": "ContaBu's code chose the tone from the customer's payment history: {{tone}}",
+        "read": "NVIDIA Nemotron wrote the message with placeholders. It only saw the language, the tone and the invoice state:",
+        "filled": "ContaBu's code filled in the real name, amount, due date and payment link, and rejected any figure the AI wrote"
+      }
+    },
     "voice": {
       "title": "Dictate the invoice",
       "subtitle": "Say who, how much, what for and when it's due.",
@@ -1950,12 +1974,15 @@
       "introLive": "Your own seeded book. Connect your PayPal sandbox app to send real sandbox invoices.",
       "show": "Show the tour",
       "hide": "Hide the tour",
+      "step": "Tour · {{n}} of {{total}}: {{title}}",
+      "allStops": "All stops",
+      "fewerStops": "Fold the tour",
       "bookkeeper": "bookkeeper",
       "backToPortal": "Owner portal",
       "stops": {
         "summary": {
           "title": "Summary",
-          "body": "The owner sees closed periods only: PayPal sales at gross, fees as an expense, refunds subtracted. Never the P&L."
+          "body": "The owner sees closed periods only: PayPal sales at gross, fees as an expense, refunds subtracted. Totals only, never the transactions."
         },
         "accounts": {
           "title": "Accounts",
@@ -2001,6 +2028,25 @@
         }
       }
     },
+    "guide": {
+      "open": "Guide",
+      "progress": "Guide progress",
+      "skip": "Skip the tour",
+      "back": "Back",
+      "next": "Next",
+      "done": "Done",
+      "tryLive": "Try it with my own PayPal sandbox",
+      "year": { "t": "The owner's year, from closed periods", "b": "The owner sees income and costs for the months the bookkeeper closed: totals only, never the transactions. A closed period no longer changes." },
+      "categories": { "t": "Where the money came from and went", "b": "PayPal sales count at gross; PayPal's fee is a separate expense, Merchant fees; a refund subtracts from income under Returns and allowances. Every figure is computed in SQL, not by AI." },
+      "collected": { "t": "What PayPal collected this year", "b": "The sum of the paid PayPal invoices, computed by the code. Outstanding and overdue invoices sit next to it." },
+      "paid": { "t": "Paid by card, already in the books", "b": "The customer paid this invoice by card or PayPal, without a PayPal account. The sale was recorded on its own at gross, with its fee apart: \"in your books\"." },
+      "newInvoice": { "t": "Create or dictate an invoice", "b": "The owner picks a saved customer, or dictates the invoice from a phone. A review screen comes first: nothing is sent until the owner taps Send invoice. Try it with your own PayPal sandbox." },
+      "paypal": { "t": "PayPal is one more account of the books", "b": "The connected PayPal account with its sandbox balance, and how to move the money to the bank. Its sales, fees, refunds and withdrawals flow into the books." },
+      "banks": { "t": "The bank accounts that feed the books", "b": "Linked with Plaid or loaded from statements. The owner sees the bank, the last four digits and the last transaction date, never the transactions." },
+      "bank": { "t": "Nothing is counted twice", "b": "Each PayPal withdrawal is matched to its bank deposit, and a purchase paid with PayPal to its bank charge, so the bank side is a transfer, not new income or a second expense." },
+      "close": { "t": "Month-end close", "b": "July to September are closed and clean: nothing pending. October is still open with four pending items for the bookkeeper. Closing a period freezes it and publishes it to the owner." },
+      "live": { "t": "That's the tour", "b": "All of this runs in PayPal's sandbox: no real money moves. Sign in with Google and the access code to get your own book, connect your own PayPal sandbox app and send real sandbox invoices." }
+    },
     "intro": {
       "kicker": "ContaBu + PayPal · sandbox",
       "title": "Get paid by card. Books that keep up on their own.",
@@ -2040,6 +2086,11 @@
       "personalHint": "Nemotron drafts a message; you review it and send it from your own email. The AI never sees the customer's name, the amount or the link: ContaBu fills them in.",
       "friendly": "Friendly",
       "firm": "Firm",
+      "payer": {
+        "on_time": "Pays on time: {{paid}} of {{paid}} paid invoices before the due date.",
+        "sometimes_late": "Sometimes late: {{late}} of {{paid}} paid invoices after the due date.",
+        "often_late": "Often late: {{late}} of {{paid}} paid invoices after the due date, so a firm tone is suggested."
+      },
       "draft": "Draft message",
       "redraft": "Another draft",
       "drafting": "Drafting…",

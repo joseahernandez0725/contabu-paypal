@@ -55,7 +55,10 @@ export default function OwnerAccounts({ preview, managedBy }: { preview: boolean
   if (!data) return <div className="flex justify-center py-16"><span className="loading loading-spinner loading-lg text-brand-green" /></div>;
   const when = (iso: string | null | undefined) =>
     iso ? new Date(iso + (iso.endsWith("Z") ? "" : "Z")).toLocaleString(lang, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : null;
+  const day = (iso: string | null | undefined) =>
+    iso ? new Date(`${iso}T12:00:00`).toLocaleDateString(lang, { day: "numeric", month: "short", year: "numeric" }) : "—";
   const pp = data.paypal;
+  const statements = (data.book_accounts ?? []).filter((a) => a.source === "statement");
   const connected = [
     ...(pp.connected ? [{ key: "pp", label: `PayPal${pp.environment === "sandbox" ? ` (${t("owner.paypal.sandbox")})` : ""}`, ok: pp.status !== "error" }] : []),
     ...data.banks.flatMap((b, k) => (b.accounts.length ? b.accounts : [{ name: null, mask: null }]).map((a, j) => ({
@@ -84,7 +87,7 @@ export default function OwnerAccounts({ preview, managedBy }: { preview: boolean
 
       <div className="grid gap-3 lg:grid-cols-2">
         {/* 2) PayPal: estado, saldo y cómo pasarlo al banco. */}
-        <DetailCard>
+        <DetailCard tour="pp-paypal-card">
           <DetailHeader dot={!pp.connected ? DOT.off : pp.status === "error" ? DOT.problem : DOT.ok}
                         kicker={pp.environment === "sandbox" ? `PayPal · ${t("owner.paypal.sandbox")}` : "PayPal"}
                         title={pp.connected ? t("owner.paypal.connected") : t("owner.paypal.notConnected")}
@@ -104,6 +107,14 @@ export default function OwnerAccounts({ preview, managedBy }: { preview: boolean
               )}
             </div>
           )}
+          {pp.connected && pp.ledger && pp.ledger.count > 0 && (
+            <div className="mt-2 text-xs text-slate-600">
+              <p>{t("owner.accounts.ppLedger", { amount: money(Number(pp.ledger.total)), count: pp.ledger.count, date: day(pp.ledger.since) })}</p>
+              {pp.ledger.difference != null && (Number(pp.ledger.difference) === 0
+                ? <p className="text-emerald-700">{t("owner.accounts.ppMatches")}</p>
+                : <p className="text-amber-700">{t("owner.accounts.ppDifference", { amount: money(Number(pp.ledger.difference)) })}</p>)}
+            </div>
+          )}
           {pp.connected && <p className="mt-2 text-[11px] text-slate-500">{t("owner.accounts.ppWithdrawNote")}</p>}
           {!pp.connected && (
             <div className="mt-3">
@@ -114,9 +125,10 @@ export default function OwnerAccounts({ preview, managedBy }: { preview: boolean
         </DetailCard>
 
         {/* 3) Bancos: los vinculados y el botón para vincular el suyo (Plaid). */}
-        <DetailCard>
-          <DetailHeader kicker={t("owner.accounts.banks")} title={data.banks.length ? t("owner.accounts.banksTitle") : t("owner.accounts.noBanks")}
-                        sub={data.banks.length ? undefined : t("owner.accounts.noBanksHelp")} />
+        <DetailCard tour="pp-banks">
+          <DetailHeader kicker={t("owner.accounts.banks")}
+                        title={data.banks.length || statements.length ? t("owner.accounts.banksTitle") : t("owner.accounts.noBanks")}
+                        sub={data.banks.length || statements.length ? undefined : t("owner.accounts.noBanksHelp")} />
           <ul className="mt-2 divide-y divide-slate-100">
             {data.banks.map((b, k) => (
               <li key={k} className="py-2 text-sm">
@@ -128,6 +140,17 @@ export default function OwnerAccounts({ preview, managedBy }: { preview: boolean
                   </span>
                 </div>
                 <div className="ps-4 text-xs text-slate-500">{b.accounts.map((a) => `${a.name ?? ""}${a.mask ? ` ••${a.mask}` : ""}`).join(" · ")}</div>
+              </li>
+            ))}
+            {/* Las cuentas que llegan por estados de cuenta subidos (no por Plaid): solo etiqueta y último movimiento. */}
+            {statements.map((a) => (
+              <li key={a.label} className="py-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${DOT.ok}`} />
+                  <span className="font-medium text-slate-800">{a.label}</span>
+                  <span className="ms-auto text-xs text-slate-500">{t("owner.accounts.bookAccountLast", { date: day(a.last_date) })}</span>
+                </div>
+                <div className="ps-4 text-xs text-slate-500">{t("owner.accounts.bookAccountStatement")}</div>
               </li>
             ))}
           </ul>

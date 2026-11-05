@@ -30,22 +30,23 @@ export default function CardPaymentsWelcome({ onInvoices }: { onInvoices: () => 
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-[#FFC439]">{t("owner.welcome.kicker")}</p>
           <h2 className="mt-1 text-lg sm:text-xl font-semibold">{t("owner.welcome.title")}</h2>
-          <p className="mt-1 text-sm text-white/85 max-w-3xl">{t("owner.welcome.body")}</p>
+          {/* En el celular solo el título, los pasos y el botón (revisión 1, 3-nov): la primera cifra del negocio en la primera pantalla. */}
+          <p className="hidden sm:block mt-1 text-sm text-white/85 max-w-3xl">{t("owner.welcome.body")}</p>
         </div>
         <button onClick={hide} aria-label={t("owner.welcome.hide")} className="text-white/70 hover:text-white">✕</button>
       </div>
-      <ol className="mt-4 grid gap-2 sm:grid-cols-3">
+      <ol className="mt-3 sm:mt-4 grid grid-cols-3 gap-2">
         {STEPS.map((k, i) => (
-          <li key={k} className="min-w-0 rounded-lg bg-white/10 px-3 py-2.5">
-            <span className="flex items-center gap-2 text-sm font-semibold">
+          <li key={k} className="min-w-0 rounded-lg bg-white/10 px-2 py-2 sm:px-3 sm:py-2.5">
+            <span className="flex items-center gap-2 text-xs sm:text-sm font-semibold">
               <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#FFC439] text-xs font-bold text-[#003087]">{i + 1}</span>
               {t(`owner.welcome.steps.${k}.title`)}
             </span>
-            <span className="mt-1 block text-xs text-white/80">{t(`owner.welcome.steps.${k}.body`)}</span>
+            <span className="mt-1 hidden sm:block text-xs text-white/80">{t(`owner.welcome.steps.${k}.body`)}</span>
           </li>
         ))}
       </ol>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
+      <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-3">
         <button onClick={onInvoices} className="rounded-full bg-[#FFC439] px-4 py-2 text-sm font-semibold text-[#003087] hover:bg-[#f2ba36]">
           {t("owner.welcome.cta")}
         </button>

@@ -27,7 +27,7 @@ export default function MonthCloseSection({ canClose }: { canClose: boolean }) {
   useEffect(() => { load(); }, []);
 
   async function act(m: BookMonth, close: boolean) {
-    if (close && m.pending > 0 && confirm !== m.month) { setConfirm(m.month); return; }
+    if (close && (m.pending > 0 || m.negative.length > 0) && confirm !== m.month) { setConfirm(m.month); return; }
     setBusy(m.month); setErr(false); setConfirm(null);
     try { await setMonthClosed(m.month, close); await load(); }
     catch { setErr(true); }
@@ -36,7 +36,7 @@ export default function MonthCloseSection({ canClose }: { canClose: boolean }) {
 
   const lang = i18n.language || "en";
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-3 space-y-3">
+    <div data-tour="pp-close" className="bg-white rounded-xl border border-slate-200 p-3 space-y-3">
       <div>
         <h3 className="text-sm font-semibold text-slate-900">{t("owner.close.title")}</h3>
         <p className="text-xs text-slate-500 mt-1">{t("owner.close.help")}</p>
@@ -66,7 +66,14 @@ export default function MonthCloseSection({ canClose }: { canClose: boolean }) {
               <span className="text-xs text-rose-700 bg-rose-50 rounded px-1.5 py-0.5">{t("owner.close.late", { count: m.late })}</span>
             )}
             <span className="ms-auto flex items-center gap-2">
-              {confirm === m.month && <span className="text-xs text-amber-700">{t("owner.close.confirmPending", { count: m.pending })}</span>}
+              {confirm === m.month && m.pending > 0 && <span className="text-xs text-amber-700">{t("owner.close.confirmPending", { count: m.pending })}</span>}
+              {confirm === m.month && m.negative.length > 0 && (
+                <span className="text-xs text-amber-700">
+                  {t("owner.close.confirmNegative", {
+                    list: m.negative.map((n) => `${n.category} (${Number(n.amount).toLocaleString(lang, { style: "currency", currency: "USD" })})`).join(", "),
+                  })}
+                </span>
+              )}
               {canClose && m.status === "open" && (
                 <button onClick={() => act(m, true)} disabled={busy === m.month} className={BTN_SMALL_PRIMARY}>
                   {confirm === m.month ? t("owner.close.closeAnyway") : t("owner.close.close")}

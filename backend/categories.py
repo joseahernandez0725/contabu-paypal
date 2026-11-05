@@ -100,6 +100,8 @@ LINES: dict[str, list[tuple[str, str]]] = {
     ],
 }
 _VALID_LINES = {code: form for form, lines in LINES.items() for code, _ in lines}
+# Las líneas que RESTAN de su sección por naturaleza (cuentas de contrapartida): su total negativo no es un error.
+CONTRA_LINES = ("SchC:2", "1120S:1b")
 
 
 def line_form(code: Optional[str]) -> Optional[str]:

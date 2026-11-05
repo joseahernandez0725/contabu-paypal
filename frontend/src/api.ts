@@ -1397,6 +1397,7 @@ export interface BookMonth {
   closed_at: string | null;
   closed_by: string | null;
   late: number;                   // movimientos que entraron DESPUÉS del cierre (no están en la foto)
+  negative: { category: string; amount: string }[];   // cuentas con total negativo en su sección (se avisa al cerrar)
 }
 
 export async function getMonths(): Promise<BookMonth[]> {
@@ -1452,7 +1453,10 @@ export async function connectPayPalKeys(clientId: string, clientSecret: string):
 /** La ventana Cuentas del dueño: sus bancos (Plaid) y su PayPal. Sin tokens ni transacciones. */
 export interface OwnerAccounts {
   banks: { institution: string | null; status: string; last_synced_at: string | null; accounts: { name: string | null; mask: string | null }[] }[];
-  paypal: PayPalStatus & { balance?: { total: string | null; available: string | null } | null; wallet_url?: string };
+  // Las cuentas que alimentan el libro (Plaid o estados de cuenta): etiqueta enmascarada y fecha del último movimiento.
+  book_accounts?: { label: string; source: "plaid" | "statement"; last_date: string }[];
+  paypal: PayPalStatus & { balance?: { total: string | null; available: string | null } | null; wallet_url?: string;
+                           ledger?: { count: number; total: string; since: string | null; difference?: string } };
 }
 export async function getOwnerAccounts(): Promise<OwnerAccounts> {
   const res = await fetch(`${API}/api/owner/companies/${cid()}/accounts`, { headers: await authHeaders() });
@@ -1495,6 +1499,8 @@ export interface OwnerInvoice {
   refund_in_books: boolean | null;   // solo si está devuelta: ¿ya está la devolución en el libro? (3-nov)
   series_id: number | null;          // la generó una factura recurrente (4-nov)
   auto_reminders_stopped: boolean;   // el dueño detuvo sus recordatorios automáticos (5-nov; irreversible en PayPal)
+  // Cómo paga este cliente (5-nov, por SQL): de sus facturas cobradas, cuántas tarde, y el tono que sugiere el código.
+  payer?: PayerHistory | null;
   reminder_count: number; last_reminder_at: string | null;   // recordatorios oficiales de PayPal (uno cada 24 h)
   // Pagada (o devuelta) FUERA de PayPal (3-nov): el último registro y si su fila del banco ya llegó.
   offline: { kind: "payment" | "refund"; method: OfflineMethod; day: string; in_bank: boolean } | null;
@@ -1583,7 +1589,9 @@ export const discardInvoice = (id: number) => ownerCall<InvoicesView>(`/invoices
 // marcadores; ContaBu pone cliente, monto y enlace) y el QR de pago para cobrar en persona.
 export const stopAutoReminders = (id: number) => ownerCall<InvoicesView>(`/invoices/${id}/stop-auto-reminders`, "POST");
 export const remindInvoice = (id: number) => ownerCall<InvoicesView>(`/invoices/${id}/remind`, "POST");
-export interface ReminderDraft { subject: string; body: string; mailto: string | null; to: string | null; sent_to_ai: string }
+export interface PayerHistory { paid: number; late: number; kind: "new" | "on_time" | "sometimes_late" | "often_late"; tone: "friendly" | "firm" }
+export interface ReminderDraft { subject: string; body: string; mailto: string | null; to: string | null; sent_to_ai: string;
+                                 tone?: "friendly" | "firm"; payer?: PayerHistory | null; ai?: AiCall }
 export const reminderDraft = (id: number, lang: string, tone: "friendly" | "firm") =>
   ownerCall<ReminderDraft>(`/invoices/${id}/reminder-draft`, "POST", { lang, tone });
 export const invoiceQR = (id: number) => ownerCall<{ png_base64: string }>(`/invoices/${id}/qr`);
@@ -1681,6 +1689,15 @@ export interface VoiceResult {
   fields: { amount: string | null; due_date: string | null; concept: string | null } | null;
   warnings: string[];             // amount_missing · amount_invalid · due_default · due_past · due_invalid · concept_missing
   sent_to_ai?: string;            // lo que vio la IA: el dictado con el cliente cambiado por [CUSTOMER]
+  // El borrador como la herramienta `create_invoice` del PayPal Agent Toolkit (validado con su esquema oficial).
+  toolkit?: { tool: string; toolkit: string; mode: "draft"; arguments: Record<string, unknown> } | null;
+  ai?: AiCall;
+}
+/** Lo que hizo la IA en UNA llamada (panel "What the AI did"): modelo, tiempo y costo reales, y qué herramientas podía
+ *  recibir del Toolkit; `waits_for_owner` es la que solo el código llama cuando el dueño confirma. */
+export interface AiCall {
+  model: string; latency_ms: number; tokens: number; cost_usd: number | null;
+  offered_tools?: string[]; waits_for_owner?: string;
 }
 export const voiceInvoice = (text: string, lang: string, customerId?: number) =>
   ownerCall<VoiceResult>("/invoices/voice", "POST", { text, lang, ...(customerId ? { customer_id: customerId } : {}) });

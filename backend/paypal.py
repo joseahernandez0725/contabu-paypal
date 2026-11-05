@@ -37,10 +37,11 @@ import logging
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import case, func
 from sqlmodel import Session, select
 
 from auth import client_writable_company, console_company, current_user, owned_company
-from bank import BankConfigError, decrypt_token, encrypt_token
+from bank import BankConfigError, _last4, decrypt_token, encrypt_token
 from db import get_session
 from ingestion import make_fingerprint
 from corrections import record_change, snapshot
@@ -857,11 +858,33 @@ def owner_accounts(company_id: int, user: User = Depends(current_user), session:
                        "available": (b.get("available_balance") or {}).get("value")}
         except PayPalError:
             balance = None
+    # Las cuentas que ALIMENTAN el libro (5-nov, revisión 1 del demo): también las de estados de cuenta subidos, no solo
+    # las de Plaid. Solo la etiqueta enmascarada, el origen y la fecha del último movimiento: nunca las filas.
+    plaid_masks = {a.get("mask") for b in banks for a in (b.accounts or []) if a.get("mask")}
+    fed = session.exec(
+        select(Transaction.bank_account, func.max(Transaction.date)).where(Transaction.company_id == company_id)
+        .where(Transaction.bank_account.is_not(None)).where(Transaction.bank_account != ACCOUNT_LABEL)
+        .group_by(Transaction.bank_account).order_by(Transaction.bank_account)
+    ).all()
+    book_accounts = [{"label": label, "source": "plaid" if _last4(label) in plaid_masks else "statement",
+                      "last_date": last.isoformat()} for label, last in fed]
+    # Conciliación del saldo (5-nov): lo que suma la cuenta PayPal en el LIBRO (SQL, con signo del banco) frente al saldo
+    # que dice PayPal. La diferencia casi siempre es el saldo anterior al primer movimiento importado.
+    signed = case((Transaction.is_inflow.is_(True), Transaction.amount), else_=-Transaction.amount)
+    n, total, first = session.exec(
+        select(func.count(Transaction.id), func.coalesce(func.sum(signed), 0), func.min(Transaction.date))
+        .where(Transaction.company_id == company_id).where(Transaction.bank_account == ACCOUNT_LABEL)
+    ).one()
+    ledger = {"count": n, "total": str(Decimal(total).quantize(Decimal("0.01"))),
+              "since": first.isoformat() if first else None}
+    if balance and balance.get("total") is not None:
+        ledger["difference"] = str((Decimal(balance["total"]) - Decimal(total)).quantize(Decimal("0.01")))
     return {
         "banks": [{"institution": b.institution_name, "status": b.status,
                    "last_synced_at": b.last_synced_at.isoformat() if b.last_synced_at else None,
                    "accounts": [{"name": a.get("name"), "mask": a.get("mask")} for a in (b.accounts or [])]}
                   for b in banks],
-        "paypal": {**_status(session, conn), "balance": balance,
+        "book_accounts": book_accounts,
+        "paypal": {**_status(session, conn), "balance": balance, "ledger": ledger,
                    "wallet_url": f"{_AUTH_HOSTS[environment()]}/myaccount/money"},
     }

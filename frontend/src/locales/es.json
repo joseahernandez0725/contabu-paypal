@@ -1786,13 +1786,18 @@
       "disconnected": "Desconectada",
       "connectedTitle_one": "1 cuenta conectada a ContaBu",
       "connectedTitle_other": "{{count}} cuentas conectadas a ContaBu",
-      "connectedBody": "Es la misma contabilidad que lleva {{name}}: lo que entra por estas cuentas llega a tus libros y lo ve tu bookkeeper.",
+      "connectedBody": "Estas cuentas alimentan la contabilidad que lleva {{name}}: todo lo que pasa por ellas llega a tus libros y lo ve tu bookkeeper.",
       "noneConnected": "Todavía no hay cuentas conectadas: conecta tu PayPal y vincula tu banco.",
       "ppAvailable": "Saldo disponible en PayPal",
       "ppTotal": "Saldo total: {{amount}}",
       "ppWithdraw": "Pasar a mi banco",
       "ppWithdrawNote": "El dinero de tus cobros queda en tu saldo de PayPal. Pasarlo a tu banco con transferencia estándar no tiene costo; la transferencia instantánea cuesta 1.5% (mínimo $0.50).",
       "noBanksHelp": "Vincula tu banco para que tus movimientos lleguen solos a tu contabilidad.",
+      "bookAccountStatement": "Por estados de cuenta subidos",
+      "bookAccountLast": "última transacción {{date}}",
+      "ppLedger": "Tu contabilidad: {{amount}} de {{count}} transacciones de PayPal desde el {{date}}.",
+      "ppDifference": "Diferencia con el saldo: {{amount}}. Casi siempre es el saldo anterior a la primera transacción importada.",
+      "ppMatches": "El saldo cuadra con tu contabilidad.",
       "linkBank": "Vincular un banco",
       "linkBankNote": "Conexión segura con Plaid: tus credenciales nunca pasan por ContaBu. (Modo de prueba: user_good / pass_good.)",
       "bankLinked": "{{bank}} quedó vinculado: sus movimientos ya llegan a tu contabilidad.",
@@ -1935,6 +1940,7 @@
       "closeAnyway": "Cerrar de todos modos",
       "confirmPending_one": "1 pendiente se mostrará al dueño como sin clasificar.",
       "confirmPending_other": "{{count}} pendientes se mostrarán al dueño como sin clasificar.",
+      "confirmNegative": "Saldo negativo en su sección, casi siempre un error de clasificación: {{list}}.",
       "reopen": "Reabrir",
       "error": "No se pudo actualizar el periodo. Inténtalo de nuevo.",
       "waiting": "En días de espera: se podrá cerrar el {{date}}"
@@ -2021,6 +2027,24 @@
       "monthClosed": "Ese depósito está en un periodo cerrado: reábrelo en Ajustes para emparejarlo.",
       "error": "No se pudo actualizar la transferencia. Inténtalo de nuevo."
     },
+    "ai": {
+      "title": "Lo que hizo la IA",
+      "meta": "{{model}} · {{secs}} s · {{cost}} · {{tokens}} tokens",
+      "voice": {
+        "read": "NVIDIA Nemotron leyó tu dictado, con el nombre del cliente oculto, y extrajo el monto, la fecha de vencimiento y la descripción:",
+        "tool": "Preparó la herramienta {{tool}} del PayPal Agent Toolkit como borrador ({{toolkit}})",
+        "toolDetail": "{{amount}} por \"{{concept}}\" · a nombre de {{email}}, de tu cliente guardado",
+        "noTool": "Todavía no hay borrador: completa el monto, la descripción o el cliente",
+        "checked": "El código de ContaBu lo validó: cliente guardado, monto válido y la fecha de vencimiento que calculó",
+        "checkedDetail": "Vence el {{date}}. La IA nunca calcula fechas ni totales.",
+        "waits": "{{tool}} espera por ti: nada se envía hasta que lo revises y lo confirmes"
+      },
+      "reminder": {
+        "tone": "El código de ContaBu eligió el tono con el historial de pago del cliente: {{tone}}",
+        "read": "NVIDIA Nemotron escribió el mensaje con marcadores. Solo vio el idioma, el tono y el estado de la factura:",
+        "filled": "El código de ContaBu puso el nombre, el monto, la fecha y el enlace de pago reales, y rechaza cualquier cifra que escriba la IA"
+      }
+    },
     "voice": {
       "title": "Dictar la factura",
       "subtitle": "Di a quién, cuánto, por qué y cuándo vence.",
@@ -2079,12 +2103,15 @@
       "introLive": "Tu propio libro sembrado. Conecta tu app de sandbox de PayPal para enviar facturas reales de sandbox.",
       "show": "Mostrar la visita",
       "hide": "Ocultar la visita",
+      "step": "Visita · {{n}} de {{total}}: {{title}}",
+      "allStops": "Todas las paradas",
+      "fewerStops": "Plegar la visita",
       "bookkeeper": "bookkeeper",
       "backToPortal": "Portal del dueño",
       "stops": {
         "summary": {
           "title": "Resumen",
-          "body": "El dueño solo ve periodos cerrados: ventas de PayPal por el bruto, comisiones como gasto y reembolsos restados. Nunca el P&L."
+          "body": "El dueño solo ve periodos cerrados: ventas de PayPal por el bruto, comisiones como gasto y reembolsos restados. Solo totales, nunca las transacciones."
         },
         "accounts": {
           "title": "Cuentas",
@@ -2130,6 +2157,25 @@
         }
       }
     },
+    "guide": {
+      "open": "Guía",
+      "progress": "Avance de la guía",
+      "skip": "Saltar la visita",
+      "back": "Atrás",
+      "next": "Siguiente",
+      "done": "Listo",
+      "tryLive": "Probarlo con mi propio sandbox de PayPal",
+      "year": { "t": "El año del dueño, de periodos cerrados", "b": "El dueño ve los ingresos y los costos de los meses que el bookkeeper cerró: solo totales, nunca las transacciones. Un periodo cerrado ya no cambia." },
+      "categories": { "t": "De dónde vino el dinero y a dónde fue", "b": "Las ventas de PayPal cuentan por el bruto; la comisión de PayPal es un gasto aparte, Merchant fees; un reembolso resta del ingreso en Returns and allowances. Cada cifra la calcula SQL, no la IA." },
+      "collected": { "t": "Lo que PayPal cobró este año", "b": "La suma de las facturas de PayPal pagadas, calculada por el código. Al lado, lo pendiente de cobro y lo vencido." },
+      "paid": { "t": "Pagada con tarjeta, ya en la contabilidad", "b": "El cliente pagó esta factura con tarjeta o con PayPal, sin cuenta de PayPal. La venta se registró sola por el bruto, con su comisión aparte: \"en tus libros\"." },
+      "newInvoice": { "t": "Crear o dictar una factura", "b": "El dueño elige un cliente guardado o dicta la factura desde el celular. Primero viene una pantalla de revisión: nada se envía hasta que el dueño toca Enviar factura. Pruébalo con tu propio sandbox de PayPal." },
+      "paypal": { "t": "PayPal es una cuenta más de la contabilidad", "b": "La cuenta de PayPal conectada con su saldo de sandbox, y cómo pasar el dinero al banco. Sus ventas, comisiones, reembolsos y retiros llegan a la contabilidad." },
+      "banks": { "t": "Las cuentas bancarias que alimentan la contabilidad", "b": "Vinculadas con Plaid o cargadas con estados de cuenta. El dueño ve el banco, los últimos cuatro dígitos y la fecha de la última transacción, nunca las transacciones." },
+      "bank": { "t": "Nada se cuenta dos veces", "b": "Cada retiro de PayPal se empareja con su depósito en el banco, y una compra pagada con PayPal con su cargo en el banco: el lado del banco es una transferencia, no un ingreso nuevo ni un segundo gasto." },
+      "close": { "t": "Cierre de mes", "b": "Julio a septiembre están cerrados y limpios: nada pendiente. Octubre sigue abierto con cuatro pendientes para el bookkeeper. Cerrar un periodo lo congela y lo publica para el dueño." },
+      "live": { "t": "Eso es todo", "b": "Todo esto corre en el sandbox de PayPal: no se mueve dinero real. Entra con Google y el código de acceso para tener tu propia contabilidad, conectar tu propia app de sandbox de PayPal y enviar facturas de sandbox reales." }
+    },
     "intro": {
       "kicker": "ContaBu + PayPal · sandbox",
       "title": "Cobra con tarjeta. Una contabilidad que se mantiene al día sola.",
@@ -2169,6 +2215,11 @@
       "personalHint": "Nemotron redacta un borrador y tú lo revisas y lo envías desde tu correo. La IA no ve el nombre del cliente, el monto ni el enlace: ContaBu los completa.",
       "friendly": "Amable",
       "firm": "Firme",
+      "payer": {
+        "on_time": "Paga a tiempo: {{paid}} de {{paid}} facturas cobradas antes del vencimiento.",
+        "sometimes_late": "A veces paga tarde: {{late}} de {{paid}} facturas cobradas después del vencimiento.",
+        "often_late": "Suele pagar tarde: {{late}} de {{paid}} facturas cobradas después del vencimiento; se sugiere un tono firme."
+      },
       "draft": "Redactar borrador",
       "redraft": "Otro borrador",
       "drafting": "Redactando…",

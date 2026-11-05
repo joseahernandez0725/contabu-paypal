@@ -34,7 +34,8 @@ from sqlmodel import Session, select
 
 from auth import console_company, current_user, owned_company
 from db import get_session
-from models import AccountType, Company, MonthClose, Transaction, User
+from categories import CONTRA_LINES
+from models import AccountType, Company, CompanyCategory, MonthClose, Transaction, User
 from reports import signed_amount
 
 router = APIRouter()
@@ -271,6 +272,20 @@ def list_months(company_id: int, user: User = Depends(current_user), session: Se
     emails = {u.id: u.email for u in session.exec(
         select(User).where(User.id.in_({c.closed_by_user_id for c in closes.values()} - {None}))
     ).all()} if closes else {}
+    # Cuentas con total NEGATIVO en su sección (5-nov): lo contrario superó a lo natural (p. ej. un depósito escrito como
+    # gasto). El signo es correcto (`signed_amount`), pero casi siempre es un error de clasificación: se avisa al cerrar.
+    # Las cuentas que restan por naturaleza (Returns and allowances, por su línea del IRS) no se avisan.
+    contra = select(CompanyCategory.name).where(CompanyCategory.company_id == company_id) \
+        .where(CompanyCategory.irs_line.in_(CONTRA_LINES))
+    negative: dict[date, list[dict]] = {}
+    for m, c, a in session.exec(
+        select(month, Transaction.category, func.sum(signed_amount()))
+        .where(Transaction.company_id == company_id).where(Transaction.account_type.in_(_IN + _OUT))
+        .where(Transaction.category.not_in(contra))
+        .group_by(month, Transaction.category).having(func.sum(signed_amount()) < 0)
+        .order_by(month, func.sum(signed_amount()))
+    ).all():
+        negative.setdefault(m, []).append({"category": c or "Other", "amount": _money(a)})
     today = date.today()
     this_month = first_of_month(today)
     out = []
@@ -289,6 +304,7 @@ def list_months(company_id: int, user: User = Depends(current_user), session: Se
             "closed_at": c.closed_at.isoformat() if c else None,
             "closed_by": emails.get(c.closed_by_user_id) if c else None,
             "late": late,
+            "negative": negative.get(m, []),
         })
     return out
 
