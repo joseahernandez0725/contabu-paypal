@@ -16,8 +16,7 @@ import { DEMO_MODE, PAYPAL_DEMO, ENTER_CODE_EVENT, openDemoGuide, setTouring, ty
 import { AccessCodeScreen, TourBanner, TourMissing } from "./components/DemoDoors";
 import DemoGuide from "./components/DemoGuide";
 import OwnerApp, { OWNER_PREVIEW_EVENT, OWNER_VIEW_EVENT } from "./components/owner/OwnerApp";
-import PayPalGuide from "./components/owner/PayPalGuide";
-import PayPalTour from "./components/owner/PayPalTour";
+import PayPalGuide, { GuideButton } from "./components/owner/PayPalGuide";
 import type { OwnerView } from "./components/owner/OwnerSidebar";
 import { PAYPAL_FROM_KEY } from "./components/owner/ConnectPayPal";
 import { auth } from "./firebase";
@@ -232,7 +231,6 @@ function App() {
       <>
         <OwnerApp key={company.id} company={company} companies={companies} onSwitch={switchCompany}
                   onExitPreview={company.role === "CLIENT" ? undefined : () => setOwnerPreview(false)}
-                  onOpenConsole={company.role === "CLIENT" ? undefined : (v) => { setOwnerPreview(false); setView(v); }}
                   notice={ppNotice?.from === "owner" ? { ...ppNotice, onClose: () => setPpNotice(null) } : null}
                   initialView={ownerStart} />
         {paypalGuide}
@@ -283,9 +281,13 @@ function App() {
               visita. Solo en la visita guiada (`touring`). */}
           {/* `paypal.contabu.com`: la vuelta al portal del dueño, que es lo que se concursa (en la visita y en vivo). */}
           {PAYPAL_DEMO && company && (
-            <button onClick={() => setOwnerPreview(true)} className="ms-auto shrink-0 rounded-full bg-[#FFC439] px-3 py-1 text-xs font-semibold text-[#003087] hover:bg-[#f2ba36]">
-              {t("owner.tour.backToPortal")}
-            </button>
+            <div className="ms-auto shrink-0 flex items-center gap-2">
+              {/* 🔄 6-nov (Jose): la guía se reinicia desde aquí (la tarjeta de paradas de arriba se quitó). */}
+              <GuideButton />
+              <button onClick={() => setOwnerPreview(true)} className="shrink-0 rounded-full bg-[#FFC439] px-3 py-1 text-xs font-semibold text-[#003087] hover:bg-[#f2ba36]">
+                {t("owner.tour.backToPortal")}
+              </button>
+            </div>
           )}
           {touring && !PAYPAL_DEMO && (
             <div className="ms-auto min-w-0 flex items-center gap-2">
@@ -298,12 +300,6 @@ function App() {
         </header>
 
         <main className="flex-1 w-full px-3 sm:px-4 py-3">
-        {PAYPAL_DEMO && company && (
-          <div className="mb-3">
-            <PayPalTour consoleView={view} onConsole={setView}
-                        onOwner={(v) => { setOwnerStart(v); setOwnerPreview(true); }} />
-          </div>
-        )}
         <VerifyEmailBanner />
         {!company ? (
           <div className="flex justify-center py-16">

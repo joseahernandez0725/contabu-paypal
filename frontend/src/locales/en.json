@@ -660,6 +660,7 @@
     },
     "reasonText": "Why? (optional — the drafter learns from it)",
     "poweredBy": "Agents on {{model}} · web verification by Tavily",
+    "poweredByOpen": "AI agents on open models",
     "costLine": "This book: {{cost}} · {{left}} agent calls left today",
     "costTip": "Spent on this book: {{cost}} · agent calls left today: {{calls}} of {{cap}} · web searches left: {{searches}} of {{scap}}",
     "auditBtn": "Audit",
@@ -1969,42 +1970,8 @@
       "accountError": "Couldn't save the account. Enter at least 4 digits."
     },
     "tour": {
-      "title": "PayPal in ContaBu: a quick tour",
-      "introTour": "A fictional HVAC business, already connected to PayPal sandbox. Every stop uses data already in the books.",
-      "introLive": "Your own seeded book. Connect your PayPal sandbox app to send real sandbox invoices.",
-      "show": "Show the tour",
-      "hide": "Hide the tour",
-      "step": "Tour · {{n}} of {{total}}: {{title}}",
-      "allStops": "All stops",
-      "fewerStops": "Fold the tour",
       "bookkeeper": "bookkeeper",
-      "backToPortal": "Owner portal",
-      "stops": {
-        "summary": {
-          "title": "Summary",
-          "body": "The owner sees closed periods only: PayPal sales at gross, fees as an expense, refunds subtracted. Totals only, never the transactions."
-        },
-        "accounts": {
-          "title": "Accounts",
-          "body": "PayPal is one more account of the books, with its sandbox balance and a transfer to the bank."
-        },
-        "invoices": {
-          "title": "Invoices",
-          "body": "Each paid PayPal invoice was recorded as a sale on its own, with its fee recorded separately. In your own book you can dictate one."
-        },
-        "bank": {
-          "title": "Bank feeds",
-          "body": "Each PayPal withdrawal is matched to its bank deposit, and a purchase to its bank charge, so nothing is counted twice."
-        },
-        "close": {
-          "title": "Month-end close",
-          "body": "Closing a period freezes it. Only closed periods reach the owner's Summary."
-        },
-        "try": {
-          "title": "Try it with your PayPal sandbox",
-          "body": "Continue with Google, enter the access code and connect your own sandbox app."
-        }
-      }
+      "backToPortal": "Owner portal"
     },
     "welcome": {
       "kicker": "ContaBu + PayPal, for business owners",
@@ -2036,35 +2003,69 @@
       "next": "Next",
       "done": "Done",
       "tryLive": "Try it with my own PayPal sandbox",
-      "year": { "t": "The owner's year, from closed periods", "b": "The owner sees income and costs for the months the bookkeeper closed: totals only, never the transactions. A closed period no longer changes." },
-      "categories": { "t": "Where the money came from and went", "b": "PayPal sales count at gross; PayPal's fee is a separate expense, Merchant fees; a refund subtracts from income under Returns and allowances. Every figure is computed in SQL, not by AI." },
-      "collected": { "t": "What PayPal collected this year", "b": "The sum of the paid PayPal invoices, computed by the code. Outstanding and overdue invoices sit next to it." },
-      "paid": { "t": "Paid by card, already in the books", "b": "The customer paid this invoice by card or PayPal, without a PayPal account. The sale was recorded on its own at gross, with its fee apart: \"in your books\"." },
-      "newInvoice": { "t": "Create or dictate an invoice", "b": "The owner picks a saved customer, or dictates the invoice from a phone. A review screen comes first: nothing is sent until the owner taps Send invoice. Try it with your own PayPal sandbox." },
-      "paypal": { "t": "PayPal is one more account of the books", "b": "The connected PayPal account with its sandbox balance, and how to move the money to the bank. Its sales, fees, refunds and withdrawals flow into the books." },
-      "banks": { "t": "The bank accounts that feed the books", "b": "Linked with Plaid or loaded from statements. The owner sees the bank, the last four digits and the last transaction date, never the transactions." },
-      "bank": { "t": "Nothing is counted twice", "b": "Each PayPal withdrawal is matched to its bank deposit, and a purchase paid with PayPal to its bank charge, so the bank side is a transfer, not new income or a second expense." },
-      "close": { "t": "Month-end close", "b": "July to September are closed and clean: nothing pending. October is still open with four pending items for the bookkeeper. Closing a period freezes it and publishes it to the owner." },
-      "live": { "t": "That's the tour", "b": "All of this runs in PayPal's sandbox: no real money moves. Sign in with Google and the access code to get your own book, connect your own PayPal sandbox app and send real sandbox invoices." }
+      "year": {
+        "t": "The owner's year, from closed periods",
+        "b": "The owner sees income and costs for the months the bookkeeper closed: totals only, never the transactions."
+      },
+      "categories": {
+        "t": "Where the money came from and went",
+        "b": "PayPal sales count at gross; PayPal's fee is a separate expense, Merchant fees; a refund subtracts from income under Returns and allowances. Every figure is computed in SQL, not by AI."
+      },
+      "collected": {
+        "t": "PayPal income",
+        "b": "The sum of the paid PayPal invoices, computed by the code. Outstanding and overdue invoices sit next to it."
+      },
+      "paid": {
+        "t": "Paid by card, already in the books",
+        "b": "The customer paid this invoice by card or PayPal, without a PayPal account. The sale was recorded on its own at gross, with its fee apart: \"in your books\"."
+      },
+      "newInvoice": {
+        "t": "Create or dictate an invoice",
+        "b": "The owner picks a saved customer, or dictates the invoice from a phone. A review screen comes first: nothing is sent until the owner taps Send invoice. Try it with your own PayPal sandbox."
+      },
+      "ai": {
+        "t": "What the AI did",
+        "b": "A real dictation, as the owner sees it in their own book. The tour doesn't call the AI: this is one measured run.",
+        "s1": "An open AI model read the dictation, with the customer's name hidden",
+        "s1d": "\"Invoice [CUSTOMER] 875 dollars for a furnace repair, due next Friday, and send it right away\"",
+        "s2": "It prepared the PayPal Agent Toolkit tool create_invoice, as a draft",
+        "s2d": "$875.00 for \"furnace repair\" · billed to the saved customer's email",
+        "s3": "ContaBu's code checked the customer and the amount, and computed the due date",
+        "s4": "send_invoice waits for the owner: \"send it right away\" did nothing"
+      },
+      "contractors": {
+        "t": "Pay contractors from PayPal",
+        "b": "The owner pays a subcontractor with PayPal Payouts. The payment and its fee go into the books on their own, as contract labor, and count once."
+      },
+      "paypal": {
+        "t": "PayPal, the business's main account",
+        "b": "The money stays in PayPal to get paid, invoice and pay contractors. The balance is compared with what the books add up to, and every sale, fee, refund and withdrawal reaches the books."
+      },
+      "bank": {
+        "t": "Nothing is counted twice",
+        "b": "Each PayPal withdrawal is matched to its bank deposit, and a purchase paid with PayPal to its bank charge, so the bank side is a transfer, not new income or a second expense."
+      },
+      "close": {
+        "t": "Month-end close",
+        "b": "July to September are closed and clean: nothing pending. October is still open with four pending items for the bookkeeper. Closing a period freezes it and publishes it to the owner."
+      },
+      "rules": {
+        "t": "How the books get categorized",
+        "b": "These are the book's rules: each one categorizes the transactions that meet its condition, and what no rule covers stays Pending. The AI never categorizes."
+      },
+      "team": {
+        "t": "The AI team that reviews the books",
+        "b": "A team of AI agents running on open models reviews the books, finds mistakes and proposes new rules for the bookkeeper to approve. This is the saved review of this book: what each agent did. A full review of a real book, 10 months and 197 transactions, takes about 30 seconds and costs less than a cent."
+      },
+      "live": {
+        "t": "That's the tour",
+        "b": "All of this runs in PayPal's sandbox: no real money moves. Sign in with Google and the access code to get your own book, connect your own PayPal sandbox app and send real sandbox invoices."
+      }
     },
     "intro": {
       "kicker": "ContaBu + PayPal · sandbox",
-      "title": "Get paid by card. Books that keep up on their own.",
-      "lead": "Meet Rivera HVAC, a small business that bills its customers through PayPal. The owner and the bookkeeper work in the same set of books.",
-      "before": "PayPal without ContaBu",
-      "after": "PayPal with ContaBu",
-      "problem": {
-        "net": "PayPal pays out net of fees, so the books need the gross sale and the fee, worked out by hand.",
-        "deposit": "The withdrawal lands at the bank looking like income: the sale is easy to count twice.",
-        "purchase": "A purchase paid with PayPal shows up in PayPal and again as a bank charge.",
-        "owner": "The owner sends invoices in one place and waits for the bookkeeper's report to see where the money went."
-      },
-      "solution": {
-        "net": "Each sale is recorded at gross, with the PayPal fee as a separate expense; refunds reduce income.",
-        "deposit": "Each withdrawal is matched to its bank deposit and stays off the P&L.",
-        "purchase": "Each purchase is matched to its bank charge, so the expense counts once.",
-        "owner": "The owner invoices from the portal (customers pay by card) and sees every period the bookkeeper closes."
-      },
+      "title": "Run your business from PayPal.",
+      "body": "For this hackathon we built a portal for small-business owners, managed by their bookkeeper, with PayPal at its center: invoices that customers pay by card and that the owner can dictate from a phone, contractor payments with PayPal Payouts, and every sale booked at gross with its fee apart, with nothing counted twice. We built it on PayPal's APIs and the PayPal Agent Toolkit, with open AI models: the code checks every figure, and the owner confirms before anything is sent. We want PayPal to become the main account of small businesses, where they get paid, invoice and pay, while the bookkeeper keeps their books.",
       "sandbox": "Everything runs in PayPal's sandbox. No real money moves.",
       "start": "Start the tour",
       "live": "Try it with my own PayPal sandbox"
@@ -2371,7 +2372,7 @@
       "needsPaypal": "Connect PayPal (in Accounts or Invoices) to set automatic reminders."
     },
     "contractors": {
-      "intro": "Pay a helper or subcontractor from your PayPal balance. Once PayPal confirms it, it enters your books on its own as a job cost (Subcontractors), with PayPal's fee recorded separately.",
+      "intro": "Pay a helper or subcontractor from your PayPal balance. Once PayPal confirms it, it enters your books on its own as a job cost (contract labor), with PayPal's fee recorded separately.",
       "listTitle": "Your contractors",
       "add": "Add contractor",
       "name": "Name",

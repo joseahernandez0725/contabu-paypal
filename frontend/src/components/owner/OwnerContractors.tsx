@@ -42,7 +42,7 @@ export default function OwnerContractors({ preview }: { preview: boolean }) {
   if (!v || !v.enabled) return null;
   const validAmount = paying && /^\d+(\.\d{1,2})?$/.test(paying.amount.trim()) && Number(paying.amount) > 0;
   return (
-    <div className="space-y-3">
+    <div data-tour="pp-contractors" className="space-y-3">
       <p className="text-sm text-slate-600">{t("owner.contractors.intro")}</p>
       {/* El botón principal, a la vista como "+ Nueva factura" en Cobros (Jose, 4-nov: "que se vea más claro"). */}
       {!preview && !adding && (

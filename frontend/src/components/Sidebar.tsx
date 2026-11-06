@@ -49,7 +49,9 @@ const LOGOUT_ICON = ic(<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><pa
 // Orden (Jose, 4-oct): Resumen → Bancos → Movimientos → Auditoría → P&L → Ajustes.
 // 18-oct (ronda de diseño 2): Notas entre Movimientos y Auditoría — los datos → lo que sabe el bookkeeper → lo que hace la IA.
 // `paypal.contabu.com` (Jose, 2-nov): sin Notas ni Auditoría, que son los agentes del concurso de Nebius (y gastan créditos).
-const BOOK_ORDER: View[] = PAYPAL_DEMO ? ["dashboard", "upload", "transactions", "pnl", "settings"]
+// 🔄 6-nov (Jose): Auditoría SÍ se muestra (la guía enseña ahí al equipo de IA, con la revisión guardada al sembrar: la
+// visita no llama a los modelos). Notas sigue fuera.
+const BOOK_ORDER: View[] = PAYPAL_DEMO ? ["dashboard", "upload", "transactions", "audit", "pnl", "settings"]
   : ["dashboard", "upload", "transactions", "notes", "audit", "pnl", "settings"];
 
 // Retardos del hover: abrir con una pausa corta evita que la barra salte cuando el mouse solo CRUZA

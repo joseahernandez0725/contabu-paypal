@@ -3,35 +3,55 @@ import { useTranslation } from "react-i18next";
 import { goLive, inTour } from "../../demo";
 import type { View } from "../Sidebar";
 import { bubblePosition, SpotlightBackdrop, useHole, useViewport, waitFor } from "../Spotlight";
+import AiTrace from "./AiTrace";
 import type { OwnerView } from "./OwnerSidebar";
 import PayPalIntro from "./PayPalIntro";
 
 // LA GUÍA DE `paypal.contabu.com` (FASE 16, Jose 5-nov: "una visita guiada parecida a la de Nebius"). La pantalla de
-// inicio (`PayPalIntro`) y 9 paradas con el MISMO foco que `demo.contabu.com` (`Spotlight.tsx`): la pantalla se oscurece,
+// inicio (`PayPalIntro`) y sus paradas con el MISMO foco que `demo.contabu.com` (`Spotlight.tsx`): la pantalla se oscurece,
 // se ilumina lo que se explica y al lado va una burbuja. Recorre el portal del dueño y dos pantallas de la consola del
-// bookkeeper. SIN IA (Jose, 5-nov): solo muestra resultados del libro sembrado. Todo lo iluminado lleva tapón: se avanza
-// con Next. En la visita se abre sola una vez por carga; en local y en vivo, con el botón "Guide" de la tarjeta de paradas.
+// bookkeeper. La visita NO llama a la IA (Jose, 5-nov) pero SÍ la muestra (6-nov): una parada con una corrida real del
+// dictado y otra con el equipo de agentes, con las cifras medidas. Todo lo iluminado lleva tapón: se avanza con Next.
+// En la visita se abre sola una vez por carga; en cualquier momento, con el botón "Guide" de la barra de arriba.
 
 export const OPEN_PAYPAL_GUIDE = "contabu:paypal-guide-open";
-export const PAYPAL_GUIDE_STATE = "contabu:paypal-guide-state";   // detail: boolean (abierta) — la tarjeta se oculta
 export function openPayPalGuide() { window.dispatchEvent(new Event(OPEN_PAYPAL_GUIDE)); }
-// También como variable de módulo: la tarjeta de la consola se monta DESPUÉS del aviso al cruzar de cáscara.
-let guideOpen = false;
-export function isPayPalGuideOpen() { return guideOpen; }
 
-type Stop = { key: string; owner?: OwnerView; console?: View; sel?: string };
+/** El botón de la barra de arriba (portal y consola) que reinicia la guía (Jose, 6-nov). */
+export function GuideButton() {
+  const { t } = useTranslation();
+  return (
+    <button onClick={openPayPalGuide}
+            className="shrink-0 rounded-full border border-[#0070BA] px-3 py-1 text-xs font-semibold text-[#0070BA] hover:bg-[#009CDE]/10">
+      {t("owner.guide.open")}
+    </button>
+  );
+}
+
+// `click`: lo que hay que tocar antes de iluminar (una pestaña dentro de la pantalla).
+type Stop = { key: string; owner?: OwnerView; console?: View; click?: string; sel?: string };
+// 🔄 6-nov (Jose): sin la parada de los bancos (mencionaba Plaid) · + la IA del dictado, los contratistas y el equipo de IA.
 const STOPS: Stop[] = [
   { key: "year", owner: "summary", sel: '[data-tour="pp-year"]' },
   { key: "categories", owner: "summary", sel: '[data-tour="pp-categories"]' },
   { key: "collected", owner: "invoices", sel: '[data-tour="pp-collected"]' },
   { key: "paid", owner: "invoices", sel: '[data-tour="pp-paid-invoice"]' },
   { key: "newInvoice", owner: "invoices", sel: '[data-tour="pp-new-invoice"]' },
+  { key: "ai" },
+  { key: "contractors", owner: "contractors", sel: '[data-tour="pp-contractors"]' },
   { key: "paypal", owner: "accounts", sel: '[data-tour="pp-paypal-card"]' },
-  { key: "banks", owner: "accounts", sel: '[data-tour="pp-banks"]' },
   { key: "bank", console: "upload", sel: '[data-tour="pp-bank"]' },
   { key: "close", console: "settings", sel: '[data-tour="pp-close"]' },
+  // 🔄 6-nov (Jose): la hoja de reglas del libro (lo que de verdad categoriza) y, después, el equipo de IA en Auditoría,
+  // con la revisión que se guardó al sembrar (`demo.py reseed --review`).
+  { key: "rules", console: "transactions", click: '[data-tour="rules-tab"]', sel: '[data-tour="rules-formula"]' },
+  { key: "team", console: "audit", sel: '[data-tour="ai-team"]' },
   { key: "live" },
 ];
+
+// Una corrida REAL del dictado (6-nov, Nemotron 3 Nano: 5 dictados entre 0.6 y 1.3 s, mediana 0.9 s; 543–593 tokens;
+// $0.00004–0.00005). La visita no llama a la IA: muestra esta, con el mismo panel que ve el dueño en su libro.
+const SAMPLE_AI = { model: "open model", latency_ms: 945, tokens: 587, cost_usd: 0.000045 };
 
 let introShownThisLoad = false;   // en la visita: la bienvenida sale una vez por carga (todos los jueces empiezan igual)
 
@@ -56,11 +76,6 @@ export default function PayPalGuide({ goOwner, goConsole }: {
     window.addEventListener(OPEN_PAYPAL_GUIDE, open);
     return () => window.removeEventListener(OPEN_PAYPAL_GUIDE, open);
   }, []);
-  useEffect(() => {
-    guideOpen = phase !== null;
-    window.dispatchEvent(new CustomEvent(PAYPAL_GUIDE_STATE, { detail: guideOpen }));
-  }, [phase]);
-
   // Al cerrar a mitad o al final, de vuelta al Resumen del dueño (lo que se concursa), no en la consola.
   const close = useCallback(() => {
     if (typeof phase === "number") nav.current.goOwner("summary");
@@ -87,6 +102,11 @@ export default function PayPalGuide({ goOwner, goConsole }: {
     if (s.console) nav.current.goConsole(s.console);
     if (!s.sel) return;
     (async () => {
+      if (s.click) {
+        const tab = await waitFor(s.click, 6000);
+        if (!alive) return;
+        tab?.click();
+      }
       const el = await waitFor(s.sel!, 6000);
       if (!alive || !el) return;
       el.scrollIntoView({ block: "center", behavior: "auto" });
@@ -121,6 +141,14 @@ export default function PayPalGuide({ goOwner, goConsole }: {
           {s.console && <span className="text-[11px] text-slate-400">{t("owner.tour.bookkeeper")}</span>}
         </div>
         <p className="text-sm text-slate-600">{t(`owner.guide.${s.key}.b`)}</p>
+        {s.key === "ai" && (
+          <AiTrace ai={SAMPLE_AI} steps={[
+            { label: t("owner.guide.ai.s1"), detail: t("owner.guide.ai.s1d") },
+            { label: t("owner.guide.ai.s2"), detail: t("owner.guide.ai.s2d") },
+            { label: t("owner.guide.ai.s3") },
+            { label: t("owner.guide.ai.s4"), tone: "wait" },
+          ]} />
+        )}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2 pt-1">
           <button type="button" onClick={close} className="text-sm text-slate-500 hover:text-slate-800">{t("owner.guide.skip")}</button>
           <button type="button" onClick={back} className="px-2 py-1 rounded-lg text-sm text-slate-600 hover:bg-slate-100 whitespace-nowrap">

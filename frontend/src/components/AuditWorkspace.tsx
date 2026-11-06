@@ -7,7 +7,7 @@ import {
   type DismissReason, type DraftResponse, type FormulaProposal, type PendingGroup, type TeamAgent, type TeamAgentKey, type TxSummary,
 } from "../api";
 import { SECTION_LABEL } from "../accounting";
-import { DEMO_MODE, inTour } from "../demo";
+import { DEMO_MODE, inTour, PAYPAL_DEMO } from "../demo";
 import MerchantSearch from "./MerchantSearch";
 import { LiveOnly } from "./DemoDoors";   // visita guiada del demo (Firm, 23-oct)
 import JudgedBy from "./JudgedBy";          // quién juzgó cada hallazgo (Firm, 23-oct)
@@ -409,7 +409,7 @@ export default function AuditWorkspace({
       <TeamPanel team={team} exact={sinceRef.current !== null} steps={steps} running={running} launching={launching} stepNote={stepNote} est={est}
                  disabled={running !== null || busy || launching}
                  onRun={(s) => void runOne(s)} onReviewBook={() => void reviewBook()} lastSpent={lastSpent} spentText={spentText}
-                 detailed={DEMO_MODE || teamOpen} canCollapse={!DEMO_MODE} onToggle={toggleTeam} ago={ago} estimateText={estimateText} />
+                 detailed={DEMO_MODE || PAYPAL_DEMO || teamOpen} canCollapse={!DEMO_MODE && !PAYPAL_DEMO} onToggle={toggleTeam} ago={ago} estimateText={estimateText} />
 
       {error && <p className="text-sm text-rose-700 bg-rose-50 rounded-lg px-3 py-2">{error}</p>}
       {draftWhy && !running && <DraftWhy d={draftWhy} onClose={() => setDraftWhy(null)} />}
@@ -503,7 +503,8 @@ export default function AuditWorkspace({
 
       {/* 4. PIE: quién hace el trabajo (para los jueces) y el costo, discreto */}
       <p className="text-[11px] text-slate-400 flex flex-wrap gap-x-3" title={costTip}>
-        <span>{t("auditView.poweredBy", { model: modelName })}</span>
+        {/* 🔄 6-nov (Jose): en paypal.contabu.com, "modelos abiertos" sin nombres; cada agente dice su tiempo y su costo. */}
+        <span>{PAYPAL_DEMO ? t("auditView.poweredByOpen") : t("auditView.poweredBy", { model: modelName })}</span>
         {usage && <span>{t("auditView.costLine", { cost: `$${(usage.total_cost_usd ?? 0).toFixed(5)}`, left: usage.left_today })}</span>}
       </p>
     </div>
@@ -748,7 +749,7 @@ function TeamMember({ m, a, loaded, state, ago }: {
 }) {
   const { t } = useTranslation();
   const model = m === "auditor" ? t("auditView.team.code")
-    : a ? `${a.model.label}${a.model.reasoning ? ` · ${t("auditView.team.reasoning")}` : ""}` : "";
+    : PAYPAL_DEMO ? "" : a ? `${a.model.label}${a.model.reasoning ? ` · ${t("auditView.team.reasoning")}` : ""}` : "";
   let line: string = "";
   let why: string | null = null;
   if (m === "auditor") line = t("auditView.team.auditor");
