@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getContractors, getOwnerHome, type OwnerHome } from "../../api";
 import OwnerYearView from "./OwnerYear";
@@ -6,6 +6,8 @@ import OwnerAccounts from "./OwnerAccounts";
 import OwnerInvoices from "./OwnerInvoices";
 import OwnerSettings from "./OwnerSettings";
 import OwnerContractors from "./OwnerContractors";
+// AG Studio pesa: se carga solo al abrir el Tablero (rama `paypal-contest`, 6-nov).
+const OwnerDashboard = lazy(() => import("./OwnerDashboard"));
 import ConnectPayPal from "./ConnectPayPal";
 import { monthLabel } from "./MonthCloseSection";
 import { getInvoices, money } from "../../api";
@@ -123,6 +125,10 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
                             onOpenInvoices={() => setView("invoices")} />
               <Summary home={home} />
             </>
+          ) : view === "dashboard" ? (
+            <Suspense fallback={<div className="flex justify-center py-16"><span className="loading loading-spinner loading-lg text-brand-green" /></div>}>
+              <OwnerDashboard home={home} />
+            </Suspense>
           ) : view === "accounts" ? (
             <OwnerAccounts preview={home.preview} managedBy={home.managed_by} />
           ) : view === "contractors" ? (

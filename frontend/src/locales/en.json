@@ -1628,7 +1628,8 @@
       "accounts": "Accounts",
       "invoices": "Invoices",
       "settings": "Settings",
-      "contractors": "Contractors"
+      "contractors": "Contractors",
+      "dashboard": "Dashboard"
     },
     "managedBy": "Bookkeeping by {{name}}",
     "yourBookkeeper": "your bookkeeper",
@@ -2411,6 +2412,45 @@
       "remove": "Remove",
       "removeConfirm": "Remove this contractor?",
       "editHint": "Payments already sent keep the email they went to."
+    },
+    "dashboard": {
+      "intro": "Your invoices, your contractor payments and the periods your bookkeeper closed, in one dashboard. Click a bar or a slice to filter the rest of the page.",
+      "note": "Built with AG Studio. The figures come from ContaBu's own calculations (SQL); the dashboard only adds them up and groups them.",
+      "src": {
+        "invoices": "Invoices",
+        "books": "Closed periods",
+        "contractors": "Contractor payments"
+      },
+      "f": {
+        "number": "Invoice",
+        "customer": "Customer",
+        "concept": "Description",
+        "status": "Status",
+        "amount": "Amount",
+        "collected": "Collected",
+        "open": "Outstanding",
+        "overdue": "Overdue",
+        "dueMonth": "Due month",
+        "paidMonth": "Paid month",
+        "month": "Month",
+        "category": "Category",
+        "income": "Income",
+        "costs": "Costs and expenses",
+        "contractor": "Contractor",
+        "paid": "Paid",
+        "fee": "PayPal fee"
+      },
+      "w": {
+        "collected": "Collected with PayPal",
+        "open": "Outstanding",
+        "overdue": "Overdue",
+        "contractorsPaid": "Paid to contractors",
+        "byCustomer": "Invoices by customer",
+        "byStatus": "Invoices by status",
+        "months": "Income and costs by closed month",
+        "costs": "Costs and expenses by category",
+        "list": "Your invoices"
+      }
     }
   }
 }

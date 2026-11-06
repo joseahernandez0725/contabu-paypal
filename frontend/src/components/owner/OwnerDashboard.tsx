@@ -1,0 +1,205 @@
+import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { AgStudio, AgStudioProvider } from "ag-studio-react";
+import { studioTheme, type AgReportState, type AgResponsiveLayoutBreakpoint } from "ag-studio";
+import { AG_STUDIO_LOCALE_ES_ES } from "ag-studio-locale";
+import { getContractors, getInvoices, type ContractorPayment, type OwnerHome, type OwnerInvoice } from "../../api";
+
+// EL TABLERO DEL DUEÑO CON AG STUDIO (FASE 16, solo en la rama `paypal-contest`: AG Studio es de pago y ContaBu no
+// depende de él; Jose, 2-nov y 6-nov). Premio "Best Use of AG Grid" (pide AG Studio, 16.B §10).
+// Lo que el dueño ya ve en su portal, en un tablero: sus facturas (Cobros), sus pagos a contratistas y los totales de los
+// periodos que cerró su bookkeeper (el Resumen). NO hay ruta nueva: los datos vienen de las mismas rutas del portal, con
+// sus mismos permisos. AG Studio solo suma y agrupa en el navegador lo que esas rutas ya entregan (el motor de AG Studio,
+// no la IA). Las transacciones del libro nunca llegan aquí (regla del portal: totales, nunca transacciones).
+// La llave de la licencia: `VITE_AG_STUDIO_LICENSE`, fuera de git. Sin llave corre con la marca de agua de prueba.
+
+const LICENSE = (import.meta.env.VITE_AG_STUDIO_LICENSE as string | undefined) || undefined;
+
+// PayPal: azul de marca y el amarillo del botón; el resto, la tipografía de ContaBu.
+const PALETTE = ["#0070BA", "#003087", "#009CDE", "#FFC439", "#2E7D32", "#7B61FF", "#E0699B", "#8C9BAB", "#00A3A3", "#F28C28"];
+const theme = studioTheme.withParams({
+  accentColor: "#0070BA",
+  fontFamily: "inherit",
+  browserColorScheme: "light",
+  ...Object.fromEntries(PALETTE.flatMap((c, i) => [[`chartPaletteFills${i + 1}Color`, c], [`chartPaletteStrokes${i + 1}Color`, c]])),
+});
+
+// En el celular (6-nov): un widget debajo del otro, a todo lo ancho, y sin el panel de filtros (se filtra tocando).
+const RESPONSIVE: AgResponsiveLayoutBreakpoint[] = [{
+  maxWidth: 640,
+  layout: (cands, { columns }) => {
+    let y = 0;
+    return cands.map((c) => {
+      const kpi = c.layout.ySpan <= 5;
+      const l = { xTrack: 0, yTrack: y, xSpan: columns, ySpan: kpi ? 4 : c.layout.ySpan };
+      y += l.ySpan;
+      return l;
+    });
+  },
+}];
+const NARROW = typeof window !== "undefined" && window.innerWidth < 640;
+
+const PAID = new Set(["PAID", "MARKED_AS_PAID", "PAID_EXTERNAL"]);
+const REFUNDED = new Set(["REFUNDED", "PARTIALLY_REFUNDED", "MARKED_AS_REFUNDED", "REFUNDED_EXTERNAL"]);
+const OPEN = new Set(["SENT", "UNPAID", "PARTIALLY_PAID", "PAYMENT_PENDING", "SCHEDULED", "SHARED"]);
+
+/** El estado en inglés (los datos van en inglés, regla 5; el idioma es solo la pantalla). */
+function statusOf(inv: OwnerInvoice): string {
+  if (PAID.has(inv.status)) return "Paid";
+  if (REFUNDED.has(inv.status)) return "Refunded";
+  if (OPEN.has(inv.status)) return inv.overdue ? "Overdue" : "Open";
+  if (inv.status === "DRAFT") return "Draft";
+  return "Cancelled";
+}
+
+const month = (iso: string | null | undefined) => (iso ? iso.slice(0, 7) : null);
+const num = (s: string | null | undefined) => (s ? Number(s) : 0);
+
+export default function OwnerDashboard({ home }: { home: OwnerHome }) {
+  const { t, i18n } = useTranslation();
+  const es = (i18n.language || "en").startsWith("es");
+  const [invoices, setInvoices] = useState<OwnerInvoice[] | null>(null);
+  const [payments, setPayments] = useState<ContractorPayment[]>([]);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    getInvoices().then((v) => setInvoices(v.invoices)).catch(() => setError(true));
+    getContractors().then((v) => setPayments(v.enabled ? v.payments : [])).catch(() => setPayments([]));
+  }, []);
+
+  // Los datos: tres tablas de filas planas, todas con cifras que ya calculó el código (SQL).
+  const data = useMemo(() => {
+    if (!invoices) return null;
+    const inv = invoices.filter((i) => i.status !== "DRAFT").map((i) => {
+      const status = statusOf(i);
+      const amount = num(i.amount);
+      return {
+        number: i.number ?? "—", customer: i.customer?.name ?? "—", concept: i.concept, status,
+        amount,
+        collected: status === "Paid" ? amount : 0,
+        open: status === "Open" ? amount : 0,
+        overdue: status === "Overdue" ? amount : 0,
+        due_month: month(i.due_date), paid_month: month(i.paid_at),
+      };
+    });
+    const books = [...home.closed_months].sort((a, b) => a.month.localeCompare(b.month)).flatMap((m) => [
+      ...m.in.map((c) => ({ month: m.month, category: c.category, income: num(c.amount), costs: 0 })),
+      ...m.out.map((c) => ({ month: m.month, category: c.category, income: 0, costs: num(c.amount) })),
+    ]);
+    const pays = payments.filter((p) => p.status === "SUCCESS").map((p) => ({
+      contractor: p.contractor ?? "—", month: month(p.date), amount: num(p.amount), fee: num(p.fee),
+    }));
+    // Dólares con su signo, en el idioma de la pantalla.
+    const cur = { format: "currencyFormat" as const,
+                  formatOptions: { format: new Intl.NumberFormat(es ? "es-US" : "en-US", { style: "currency", currency: "USD" }) } };
+    const txt = { format: "textFormat" as const };
+    return {
+      sources: [
+        { id: "invoices", name: t("owner.dashboard.src.invoices"), data: inv, fields: [
+          { id: "number", name: t("owner.dashboard.f.number"), ...txt },
+          { id: "customer", name: t("owner.dashboard.f.customer"), ...txt },
+          { id: "concept", name: t("owner.dashboard.f.concept"), ...txt },
+          { id: "status", name: t("owner.dashboard.f.status"), ...txt },
+          { id: "amount", name: t("owner.dashboard.f.amount"), ...cur },
+          { id: "collected", name: t("owner.dashboard.f.collected"), ...cur },
+          { id: "open", name: t("owner.dashboard.f.open"), ...cur },
+          { id: "overdue", name: t("owner.dashboard.f.overdue"), ...cur },
+          { id: "due_month", name: t("owner.dashboard.f.dueMonth"), ...txt },
+          { id: "paid_month", name: t("owner.dashboard.f.paidMonth"), ...txt },
+        ] },
+        { id: "books", name: t("owner.dashboard.src.books"), data: books, fields: [
+          { id: "month", name: t("owner.dashboard.f.month"), ...txt },
+          { id: "category", name: t("owner.dashboard.f.category"), ...txt },
+          { id: "income", name: t("owner.dashboard.f.income"), ...cur },
+          { id: "costs", name: t("owner.dashboard.f.costs"), ...cur },
+        ] },
+        { id: "contractors", name: t("owner.dashboard.src.contractors"), data: pays, fields: [
+          { id: "contractor", name: t("owner.dashboard.f.contractor"), ...txt },
+          { id: "month", name: t("owner.dashboard.f.month"), ...txt },
+          { id: "amount", name: t("owner.dashboard.f.paid"), ...cur },
+          { id: "fee", name: t("owner.dashboard.f.fee"), ...cur },
+        ] },
+      ],
+    };
+  }, [invoices, payments, home, t, es]);
+
+  // El tablero ya armado (el dueño no tiene que construir nada); en modo vista: filtra y cruza, no edita.
+  const initialState = useMemo(() => {
+    const title = (key: string) => ({ title: { enabled: true, text: t(`owner.dashboard.w.${key}`) } });
+    const kpi = (key: string, field: string) => ({
+      type: "value", dataMapping: { value: [{ id: field, aggregation: "sum" }] },
+      format: { style: { label: { enabled: true, text: t(`owner.dashboard.w.${key}`) } } },
+    });
+    return {
+      pages: [{
+        id: "collections",
+        layout: { minWidth: 320 },   // sin esto el lienzo mide 720 px y en el celular se sale de la pantalla
+        widgets: {
+          collected: kpi("collected", "invoices.collected"),
+          open: kpi("open", "invoices.open"),
+          overdue: kpi("overdue", "invoices.overdue"),
+          contractors: kpi("contractorsPaid", "contractors.amount"),
+          byCustomer: {
+            type: "column-chart-grouped",
+            dataMapping: { categoryKey: [{ id: "invoices.customer" }],
+                           valueKey: [{ id: "invoices.collected", aggregation: "sum" }, { id: "invoices.open", aggregation: "sum" },
+                                      { id: "invoices.overdue", aggregation: "sum" }], tooltipKey: [] },
+            format: title("byCustomer"),
+          },
+          byStatus: {
+            type: "donut-chart",
+            dataMapping: { categoryKey: [{ id: "invoices.status" }], valueKey: [{ id: "invoices.amount", aggregation: "sum" }] },
+            format: title("byStatus"),
+          },
+          months: {
+            type: "column-chart-grouped",
+            dataMapping: { categoryKey: [{ id: "books.month" }],
+                           valueKey: [{ id: "books.income", aggregation: "sum" }, { id: "books.costs", aggregation: "sum" }], tooltipKey: [] },
+            format: title("months"),
+          },
+          costs: {
+            type: "donut-chart",
+            dataMapping: { categoryKey: [{ id: "books.category" }], valueKey: [{ id: "books.costs", aggregation: "sum" }] },
+            format: title("costs"),
+          },
+          list: {
+            type: "grid",
+            dataMapping: { cols: [{ id: "invoices.number" }, { id: "invoices.customer" }, { id: "invoices.concept" },
+                                  { id: "invoices.status" }, { id: "invoices.due_month" }, { id: "invoices.amount", aggregation: "sum" }] },
+            format: title("list"),
+          },
+        },
+        widgetLayout: {
+          collected: { xTrack: 0, yTrack: 0, xSpan: 6, ySpan: 5 },
+          open: { xTrack: 6, yTrack: 0, xSpan: 6, ySpan: 5 },
+          overdue: { xTrack: 12, yTrack: 0, xSpan: 6, ySpan: 5 },
+          contractors: { xTrack: 18, yTrack: 0, xSpan: 6, ySpan: 5 },
+          byCustomer: { xTrack: 0, yTrack: 5, xSpan: 14, ySpan: 12 },
+          byStatus: { xTrack: 14, yTrack: 5, xSpan: 10, ySpan: 12 },
+          months: { xTrack: 0, yTrack: 17, xSpan: 14, ySpan: 12 },
+          costs: { xTrack: 14, yTrack: 17, xSpan: 10, ySpan: 12 },
+          list: { xTrack: 0, yTrack: 29, xSpan: 24, ySpan: 14 },
+        },
+      }],
+      selectedPageId: "collections",
+      panels: { filters: { collapsed: true } },
+    } as unknown as AgReportState;
+  }, [t]);
+
+  if (error) return <p className="text-sm text-rose-600">{t("owner.error")}</p>;
+  if (!data) return <div className="flex justify-center py-16"><span className="loading loading-spinner loading-lg text-brand-green" /></div>;
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-slate-600">{t("owner.dashboard.intro")}</p>
+      {/* `key`: AG Studio fija el idioma al crearse; al cambiarlo se vuelve a crear. */}
+      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden" style={{ height: "min(1100px, calc(100vh - 10rem))", minHeight: 560 }}>
+        <AgStudioProvider licenseKey={LICENSE}>
+          <AgStudio key={es ? "es" : "en"} data={data as never} initialState={initialState} mode="view" theme={theme}
+                    localeText={es ? AG_STUDIO_LOCALE_ES_ES : undefined}
+                    responsiveLayoutBreakpoints={RESPONSIVE} panels={NARROW ? { view: { left: [], right: [] } } : undefined} style={{ height: "100%", width: "100%" }} />
+        </AgStudioProvider>
+      </div>
+      <p className="text-[11px] text-slate-400">{t("owner.dashboard.note")}</p>
+    </div>
+  );
+}

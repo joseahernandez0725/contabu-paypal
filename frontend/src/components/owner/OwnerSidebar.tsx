@@ -13,8 +13,8 @@ import { PAYPAL_DEMO } from "../../demo";
 // libro", el recorrido del demo son del bookkeeper) y van a divergir: el portal se usa más en el celular y llevará
 // la marca de la firma. Unificar solo si aparece una tercera cáscara (DEUDA TECNICA.md, ⚫ #32).
 
-export type OwnerView = "summary" | "accounts" | "invoices" | "contractors" | "settings";
-export const OWNER_ORDER: OwnerView[] = ["summary", "accounts", "invoices", "contractors", "settings"];
+export type OwnerView = "summary" | "dashboard" | "accounts" | "invoices" | "contractors" | "settings";
+export const OWNER_ORDER: OwnerView[] = ["summary", "dashboard", "accounts", "invoices", "contractors", "settings"];
 
 const ic = (d: ReactNode) => (
   <svg viewBox="0 0 24 24" className="size-[18px] shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -23,6 +23,8 @@ const ic = (d: ReactNode) => (
 );
 const ICONS: Record<OwnerView, ReactNode> = {
   summary: ic(<><path d="M4 19V5M4 19h16" /><path d="M8 16v-5M12 16V8M16 16v-3" /></>),
+  // El tablero con AG Studio (6-nov, rama `paypal-contest`).
+  dashboard: ic(<><rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" /><rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" /></>),
   accounts: ic(<><path d="M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 21h18" /></>),
   invoices: ic(<><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6M9 16h3" /></>),
   // Contratistas (4-nov, detrás de PAYPAL_PAYOUTS): pagarles con PayPal.

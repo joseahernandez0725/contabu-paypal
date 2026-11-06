@@ -1757,7 +1757,8 @@
       "accounts": "Cuentas",
       "invoices": "Cobros",
       "settings": "Configuración",
-      "contractors": "Contratistas"
+      "contractors": "Contratistas",
+      "dashboard": "Tablero"
     },
     "managedBy": "Contabilidad por {{name}}",
     "yourBookkeeper": "tu bookkeeper",
@@ -2540,6 +2541,45 @@
       "remove": "Borrar",
       "removeConfirm": "¿Borrar este contratista?",
       "editHint": "Los pagos ya enviados conservan el correo al que se mandaron."
+    },
+    "dashboard": {
+      "intro": "Tus facturas, tus pagos a contratistas y los periodos que cerró tu bookkeeper, en un solo tablero. Toca una barra o una porción para filtrar el resto de la página.",
+      "note": "Hecho con AG Studio. Las cifras salen de los cálculos de ContaBu (SQL); el tablero solo las suma y las agrupa.",
+      "src": {
+        "invoices": "Facturas",
+        "books": "Periodos cerrados",
+        "contractors": "Pagos a contratistas"
+      },
+      "f": {
+        "number": "Factura",
+        "customer": "Cliente",
+        "concept": "Concepto",
+        "status": "Estado",
+        "amount": "Monto",
+        "collected": "Cobrado",
+        "open": "Por cobrar",
+        "overdue": "Vencido",
+        "dueMonth": "Mes de vencimiento",
+        "paidMonth": "Mes de pago",
+        "month": "Mes",
+        "category": "Categoría",
+        "income": "Ingresos",
+        "costs": "Costos y gastos",
+        "contractor": "Contratista",
+        "paid": "Pagado",
+        "fee": "Comisión de PayPal"
+      },
+      "w": {
+        "collected": "Cobrado con PayPal",
+        "open": "Por cobrar",
+        "overdue": "Vencido",
+        "contractorsPaid": "Pagado a contratistas",
+        "byCustomer": "Facturas por cliente",
+        "byStatus": "Facturas por estado",
+        "months": "Ingresos y costos por mes cerrado",
+        "costs": "Costos y gastos por categoría",
+        "list": "Tus facturas"
+      }
     }
   }
 }
