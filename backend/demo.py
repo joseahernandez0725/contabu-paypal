@@ -377,7 +377,7 @@ def ensure_live_office(session: Session, user: User) -> None:
     session.commit()
 
 
-def reseed_paypal_demo(session: Session) -> dict:
+def reseed_paypal_demo(session: Session, *, review: bool = False) -> dict:
     """`paypal.contabu.com` (5-nov): pone el libro sembrado NUEVO de `demo_paypal.py` donde quedó el viejo, sin tocar a
     ningún juez. · La VISITA: borra en cascada solo sus LIBROS y siembra el nuevo en la MISMA oficina, conectado como
     antes (la oficina y su `DemoOffice` se quedan). · La PISCINA: las oficinas EN ESPERA (`kind="pool"`, sin juez) se
@@ -397,6 +397,14 @@ def reseed_paypal_demo(session: Session) -> dict:
         books = seed_visitor_books(session, firm, _system_user(session, TOUR_UID), strict=True, linked=True)
         session.commit()
         out["tour"] = {"firm": tid, "books_removed": len(old), "books_seeded": [b.name for b in books]}
+        if review:
+            # 🔄 6-nov (Jose): la revisión del equipo de IA se GUARDA una vez, aquí (gasta Nebius y Tavily una vez); la
+            # visita la muestra en Auditoría y nunca llama a los modelos. Igual que la visita de `demo.contabu.com`.
+            os.environ.setdefault("AGENT_DAILY_CALLS", "200")
+            owner = _system_user(session, TOUR_UID)
+            review_tour(session, firm, owner)
+            draft_tour(session, firm, owner)
+            out["tour"]["reviewed"] = True
     waiting = session.exec(select(DemoOffice.firm_id).where(DemoOffice.kind == "pool")).all()
     for fid in waiting:
         f = session.get(Firm, fid)
@@ -887,12 +895,13 @@ _USAGE = """uso (siempre con DEMO_MODE=true y el DATABASE_URL de la base del DEM
   .venv/bin/python demo.py pool                 rellena las oficinas en espera hasta DEMO_POOL_SIZE
   .venv/bin/python demo.py status               qué hay: la visita, la piscina, los códigos canjeados
   .venv/bin/python demo.py cleanup              borra lo vencido
-  .venv/bin/python demo.py reseed               (solo PAYPAL_DEMO) el libro nuevo en la visita y en la piscina; los jueces no cambian"""
+  .venv/bin/python demo.py reseed [--review]    (solo PAYPAL_DEMO) el libro nuevo en la visita y en la piscina; los jueces no
+                                                cambian · --review guarda una revisión del equipo de IA (gasta una vez)"""
 
 
 if __name__ == "__main__":
     cmd, args = (sys.argv[1] if len(sys.argv) > 1 else ""), sys.argv[2:]
-    if cmd not in {"tour", "tour-proposals", "pool", "status", "cleanup", "reseed"} or (args and args != ["--no-review"]):
+    if cmd not in {"tour", "tour-proposals", "pool", "status", "cleanup", "reseed"} or (args and args not in (["--no-review"], ["--review"])):
         sys.exit(_USAGE)
     if not DEMO_MODE:
         sys.exit("Se niega: DEMO_MODE no está encendido (esto es solo para la base del demo).")
@@ -916,6 +925,6 @@ if __name__ == "__main__":
         elif cmd == "status":
             print(status(s))
         elif cmd == "reseed":
-            print(reseed_paypal_demo(s))
+            print(reseed_paypal_demo(s, review="--review" in args))
         else:
             print(cleanup_expired_offices(s) or "nada vencido")

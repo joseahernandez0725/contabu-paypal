@@ -21,8 +21,8 @@ import month_close
 import paypal
 from categories import seed_chart
 from ingestion import ingest_parsed, make_fingerprint
-from models import (AccountType, CategoryRule, Company, Firm, Invoice, InvoiceCustomer, MonthClose, PayPalConnection,
-                    PayPalTransferMatch, RuleScope, Transaction, User)
+from models import (AccountType, CategoryRule, Company, Contractor, ContractorPayment, Firm, Invoice, InvoiceCustomer,
+                    MonthClose, PayPalConnection, PayPalTransferMatch, RuleScope, Transaction, User)
 from rules import load_rules
 
 CUSTOMERS = [("Maple Grove Apartments", "billing@maplegrove.example.com"),
@@ -202,6 +202,21 @@ def seed(session: Session, firm: Firm, owner: User, *, linked: bool) -> list[Com
     p = post(_event("DEMOBUY0001", "T0001", f"-{amount}", day, name=merchant))
     charge = _bank_row(session, company, account, day + timedelta(days=1), f"PAYPAL *{merchant.upper()}", amount, False)
     session.add(PayPalTransferMatch(company_id=company.id, withdrawal_tx_id=p.id, bank_tx_id=charge.id, status="auto"))
+    session.flush()
+
+    # Un pago a un contratista con PayPal Payouts (6-nov, el discurso de "PayPal como la cuenta principal"): en octubre, el
+    # mes abierto, registrado por el MISMO camino que un pago real (`contractor_payouts._book`: mano de obra + su comisión).
+    import contractor_payouts   # aquí: importa `paypal` y `rules`, que ya cargó este módulo
+    quill = Contractor(company_id=company.id, name="Quillbrook Duct Works", email="billing@quillbrook.example.com")
+    session.add_all([quill, Contractor(company_id=company.id, name="Tallowmere Mechanical", email="pay@tallowmere.example.com")])
+    session.flush()
+    pay = ContractorPayment(company_id=company.id, contractor_id=quill.id, amount=Decimal("450.00"), memo="Duct sealing, Oak Street job",
+                            status="SUCCESS", paypal_batch_id="DEMOBATCH0001", paypal_item_id="DEMOITEM0001",
+                            paypal_tx_id="DEMOPAYOUT0001", fee=Decimal("0.25"), created_by_user_id=owner.id,
+                            paid_at=datetime(2026, 10, 20, 17, tzinfo=timezone.utc))
+    session.add(pay)
+    session.flush()
+    contractor_payouts._book(session, company, pay, quill)
     session.flush()
 
     for m in CLOSED:

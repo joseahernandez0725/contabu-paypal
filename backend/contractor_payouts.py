@@ -50,16 +50,20 @@ def _require_enabled() -> None:
         raise HTTPException(status_code=404, detail="not available")
 
 
-def ensure_category(session: Session, company: Company) -> None:
-    """Agrega "Subcontractors" (COGS) al plan del libro si no está. Nunca toca una cuenta que ya existe. Sin commit."""
+def ensure_category(session: Session, company: Company) -> str:
+    """La cuenta del pago a un contratista. 🔄 6-nov: si el plan ya tiene una de COSTO DE VENTAS para subcontratistas (el de
+    construcción trae "Contract labor – subcontractors"), se usa esa, para no partir el mismo gasto en dos líneas; si no,
+    se agrega "Subcontractors" (COGS). Nunca toca una cuenta que ya existe. Sin commit. Devuelve el nombre."""
     rows = session.exec(select(CompanyCategory).where(CompanyCategory.company_id == company.id)).all()
-    if any(r.name.lower() == CATEGORY.lower() for r in rows):
-        return
+    for r in rows:
+        if r.account_type == AccountType.COGS and r.archived_at is None and "subcontractor" in r.name.lower():
+            return r.name
     line = "1125-A" if (company.tax_form or "schedule_c") == "1120s" else "SchC:PartIII"
     pos = max([r.position or 0 for r in rows if r.account_type == AccountType.COGS] or [-1]) + 1
     session.add(CompanyCategory(company_id=company.id, account_type=AccountType.COGS, name=CATEGORY, irs_line=line,
                                 position=pos, default_key=CATEGORY))
     session.flush()
+    return CATEGORY
 
 
 def _book(session: Session, company: Company, p: ContractorPayment, c: Optional[Contractor]) -> None:
@@ -69,13 +73,13 @@ def _book(session: Session, company: Company, p: ContractorPayment, c: Optional[
     if entry is not None:
         p.transaction_id = entry.transaction_id
         return
-    ensure_category(session, company)
+    category = ensure_category(session, company)
     rules = load_rules(session, company.id, company.sector or "")
     day = (p.paid_at or datetime.now(timezone.utc)).date()
     who = (c.name if c else "CONTRACTOR").upper()
     tx = paypal.insert_row(session, company, {
         "paypal_id": p.paypal_tx_id, "date": day, "description": f"PAYPAL PAYOUT TO {who}", "signed": -p.amount,
-        "event_code": "PAYOUT", "preset": (AccountType.COGS, CATEGORY)}, rules)
+        "event_code": "PAYOUT", "preset": (AccountType.COGS, category)}, rules)
     p.transaction_id = tx.id
     if p.fee:
         paypal.insert_row(session, company, {
