@@ -39,12 +39,86 @@ MAX_ITEMS = 80          # turnos de conversación que se aceptan por petición
 MAX_CHARS = 120_000     # tope del pedido completo (instrucciones + conversación + herramientas)
 MAX_TOKENS = 1500
 # 8-nov: con las consultas de AG Studio (`execute_query`, esquema grande y anidado) fallaron Nano (8 turnos, 105k tokens) y
-# Super (10 turnos, 130k tokens): el asistente quedó con herramientas propias y simples, y con Nano basta. STUDIO_AI_MODEL
-# permite cambiarlo.
-def _model() -> str:
+# Super (10 turnos, 130k tokens). Para comparar modelos, el chat puede pedir uno de esta lista CERRADA (✅ catálogo de Nebius
+# Token Factory, 8-nov, con precio por millón de tokens: entrada, salida); cualquier otro se ignora y se usa el de siempre.
+STUDIO_MODELS: dict[str, tuple[float, float]] = {
+    "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B": (0.06, 0.24),
+    "nvidia/Nemotron-3_5-Lightning": (0.06, 0.24),
+    "nvidia/nemotron-3-super-120b-a12b": (0.30, 0.90),
+    "Qwen/Qwen3-235B-A22B-Instruct-2507": (0.20, 0.60),
+    "openai/gpt-oss-120b": (0.15, 0.60),
+    "deepseek-ai/DeepSeek-V4-Flash-0731": (0.14, 0.28),
+    "zai-org/GLM-5.3-Flash": (0.15, 0.50),
+}
+# 8-nov (Jose aprobó): Qwen3 235B por defecto (✅ licencia apache-2.0 en su ficha de Hugging Face): el único que filtró y
+# consultó el tablero sin un intento fallido. DeepSeek V4 Flash (mit) y GLM 5.3 Flash quedan en el selector.
+DEFAULT_MODEL = "Qwen/Qwen3-235B-A22B-Instruct-2507"
+for _m, _p in STUDIO_MODELS.items():          # para que `Usage.cost_usd` sepa el precio de cada uno
+    nemotron.PRICES_PER_MTOK.setdefault(_m, _p)
+
+
+def _model(requested: Optional[dict] = None) -> str:
     import os
-    return os.getenv("STUDIO_AI_MODEL") or nemotron.model_name()
+    want = (requested or {}).get("id")
+    if want in STUDIO_MODELS:
+        return want
+    return os.getenv("STUDIO_AI_MODEL") or DEFAULT_MODEL
+
+
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+# EL CÓDIGO REVISA CADA CIFRA (8-nov): la IA no calcula. En la respuesta final, cada monto que escribe el modelo tiene que
+# aparecer, tal cual, en lo que devolvieron las herramientas en esta conversación. Si alguno no aparece (lo inventó o lo
+# sumó él), la respuesta NO se muestra: se reemplaza por un aviso con las cifras que no se pudieron verificar.
+# Montos: con "$", con separador de miles, con decimales, o enteros de 4+ cifras que no son un año ("5810 USD"; ✅ 8-nov se
+# colaba sin "$" ni coma).
+_AMOUNT_RE = re.compile(r"(\$\s?-?\d[\d,]*(?:\.\d+)?|-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+\.\d+|(?<![\d-])(?!0)(?!(?:19|20)\d{2}\b)\d{4,}(?![\d-]))")
+_ANY_NUM_RE = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def _num(text: str) -> Optional[float]:
+    try:
+        return round(float(text.replace("$", "").replace(",", "").strip()), 2)
+    except ValueError:
+        return None
+
+
+def amounts_in(text: str) -> list[tuple[str, float]]:
+    """Los montos de un texto: con "$", con separador de miles o con decimales. Los enteros sueltos (cantidades, días,
+    años) no cuentan como montos."""
+    out = []
+    for m in _AMOUNT_RE.finditer(text or ""):
+        v = _num(m.group(0))
+        if v is not None:
+            out.append((m.group(0).strip(), v))
+    return out
+
+
+def tool_numbers(items: list[dict]) -> set[float]:
+    """Cada número que devolvió una herramienta en esta conversación (sin las comas de miles)."""
+    nums: set[float] = set()
+    for it in items:
+        if it.get("type") == "function_call_output":
+            for m in _ANY_NUM_RE.finditer(str(it.get("output") or "").replace(",", "")):
+                try:
+                    nums.add(round(float(m.group(0)), 2))
+                except ValueError:
+                    pass
+    return nums
+
+
+def unverified_amounts(text: str, items: list[dict]) -> list[str]:
+    known = tool_numbers(items)
+    return [raw for raw, v in amounts_in(text) if v not in known and -v not in known]
+
+
+_UNVERIFIED = {
+    "es": "No pude verificar estas cifras con tus datos ({figures}), así que no te muestro esa respuesta. "
+          "Pregúntame de otra forma o mira el tablero.",
+    "en": "I couldn't verify these figures against your data ({figures}), so I won't show that answer. "
+          "Try asking another way or check the dashboard.",
+}
 
 
 class StudioTurn(BaseModel):
@@ -52,6 +126,8 @@ class StudioTurn(BaseModel):
     input: list[dict[str, Any]] = Field(default_factory=list)
     tools: list[dict[str, Any]] = Field(default_factory=list)
     toolChoice: Optional[Union[str, dict[str, Any]]] = None
+    model: Optional[dict[str, Any]] = None      # `{id}` del selector de modelos del chat (solo de STUDIO_MODELS)
+    lang: str = "en"                            # el idioma del aviso cuando una cifra no se puede verificar
 
 
 def _text_of(content: Any) -> str:
@@ -135,9 +211,11 @@ def studio_turn(company_id: int, payload: StudioTurn, user: User = Depends(curre
     except agent_calls.CapReached:
         raise HTTPException(status_code=429, detail="ai_cap_reached")
 
-    body: dict[str, Any] = {"model": _model(), "messages": to_messages(payload.instructions, payload.input),
-                            "temperature": 0, "max_tokens": MAX_TOKENS,
-                            "chat_template_kwargs": {"enable_thinking": False}}
+    model = _model(payload.model)
+    body: dict[str, Any] = {"model": model, "messages": to_messages(payload.instructions, payload.input),
+                            "temperature": 0, "max_tokens": MAX_TOKENS}
+    if model.startswith("nvidia/"):                       # el razonamiento apagado (✅ así se usa Nemotron en todo ContaBu)
+        body["chat_template_kwargs"] = {"enable_thinking": False}
     tools = to_tools(payload.tools)
     if tools:
         body["tools"] = tools
@@ -150,22 +228,33 @@ def studio_turn(company_id: int, payload: StudioTurn, user: User = Depends(curre
     except nemotron.NemotronUnavailable:
         raise HTTPException(status_code=503, detail="ai_unavailable")
     except nemotron.NemotronError as e:
-        agent_calls.record(session, company, AGENT, None, outcome=e.code, user_id=user.id, model=_model(),
+        agent_calls.record(session, company, AGENT, None, outcome=e.code, user_id=user.id, model=model,
                            latency_ms=int((time.monotonic() - started) * 1000))
         session.commit()
         raise HTTPException(status_code=502, detail="ai_failed")
     if r.status_code >= 400:
         agent_calls.record(session, company, AGENT, None, outcome=f"http_{r.status_code}", user_id=user.id,
-                           model=_model(), latency_ms=int((time.monotonic() - started) * 1000))
+                           model=model, latency_ms=int((time.monotonic() - started) * 1000))
         session.commit()
         raise HTTPException(status_code=502, detail="ai_failed")
     data = r.json()
-    usage = nemotron._usage_from(data, _model(), "tools", False, started)
+    usage = nemotron._usage_from(data, model, "tools", False, started)
     message = ((data.get("choices") or [{}])[0].get("message")) or {}
     output = to_output(message)
+    final = not any(o["type"] == "function_call" for o in output)
+    unverified: list[str] = []
+    if final:
+        for o in output:
+            if o["type"] == "message":
+                text = o["content"][0]["text"]
+                bad = unverified_amounts(text, payload.input)
+                if bad:
+                    unverified += bad
+                    lang = "es" if payload.lang.startswith("es") else "en"
+                    o["content"][0]["text"] = _UNVERIFIED[lang].format(figures=", ".join(bad))
     agent_calls.record(session, company, AGENT, usage, user_id=user.id, items_out=len(output),
                        items_valid=sum(1 for o in output if o["type"] == "function_call"),
-                       outcome="ok" if usage.finish_reason != "length" else "out_of_tokens")
+                       outcome="unverified" if unverified else ("ok" if usage.finish_reason != "length" else "out_of_tokens"))
     session.commit()
     return {
         "id": data.get("id") or f"resp_{uuid.uuid4().hex[:12]}", "createdAt": int(time.time() * 1000),
@@ -174,5 +263,7 @@ def studio_turn(company_id: int, payload: StudioTurn, user: User = Depends(curre
         "output": output, "model": usage.model,
         # Lo medido de ESTE turno, para mostrarlo junto a la respuesta (como el panel "What the AI did").
         "contabu": {"latency_ms": usage.latency_ms, "tokens": usage.prompt_tokens + usage.completion_tokens,
-                    "cost_usd": usage.cost_usd},
+                    "cost_usd": usage.cost_usd, "model": usage.model, "final": final,
+                    # Solo en la respuesta final: ¿el código encontró cada monto en lo que devolvieron las herramientas?
+                    "verified": (not unverified) if final else None, "unverified": unverified},
     }

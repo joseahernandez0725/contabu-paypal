@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgStudio, AgStudioProvider } from "ag-studio-react";
 import { AgStudioAiModule, studioTheme, type AgReportState, type AgResponsiveLayoutBreakpoint } from "ag-studio";
 import { AG_STUDIO_LOCALE_ES_ES } from "ag-studio-locale";
 import { getContractors, getInvoices, type ContractorPayment, type OwnerHome, type OwnerInvoice, type StudioTurnCost } from "../../api";
 import { inTour } from "../../demo";
-import { collectionsAssistant } from "./studioAssistant";
+import { collectionsAssistant, STUDIO_AI_TEXT, toolDisplay } from "./studioAssistant";
 
 // EL TABLERO DEL DUEÑO CON AG STUDIO (FASE 16, solo en la rama `paypal-contest`: AG Studio es de pago y ContaBu no
 // depende de él; Jose, 2-nov y 6-nov). Premio "Best Use of AG Grid" (pide AG Studio, 16.B §10).
@@ -56,6 +56,12 @@ function statusOf(inv: OwnerInvoice): string {
 
 const month = (iso: string | null | undefined) => (iso ? iso.slice(0, 7) : null);
 const num = (s: string | null | undefined) => (s ? Number(s) : 0);
+// 8-nov (prueba de 10 preguntas): con los meses solo como texto "2026-08", el modelo buscaba "August" o "este año" y no
+// encontraba nada (3 de 10 fallaron por esto). Cada fila lleva también el año como número y el mes con su nombre.
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const monthName = (ym: string | null) => (ym ? MONTHS[Number(ym.slice(5, 7)) - 1] : null);   // "August": el año va en `year`
+const monthYear = (ym: string | null) => (ym ? `${MONTHS[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}` : null);
+const yearOf = (ym: string | null) => (ym ? Number(ym.slice(0, 4)) : null);
 
 export default function OwnerDashboard({ home }: { home: OwnerHome }) {
   const { t, i18n } = useTranslation();
@@ -66,14 +72,26 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
   // El asistente (Agent Framework): solo el dueño en su libro; ni la vista previa del bookkeeper ni la visita (sin IA).
   const canAsk = !home.preview && !inTour();
   const [asking, setAsking] = useState(false);
-  const [spent, setSpent] = useState({ turns: 0, ms: 0, tokens: 0, usd: 0 });
-  const onTurn = useCallback((c: StudioTurnCost) => setSpent((s) => ({ turns: s.turns + 1, ms: s.ms + c.latency_ms,
-                                                                       tokens: s.tokens + c.tokens, usd: s.usd + (c.cost_usd ?? 0) })), []);
+  // Por cada respuesta (8-nov): se acumulan sus turnos hasta el final y se muestra el resumen, con la revisión de cifras.
+  type Answer = { turns: number; ms: number; tokens: number; usd: number; model: string; verified: boolean | null };
+  const running = useRef<Answer>({ turns: 0, ms: 0, tokens: 0, usd: 0, model: "", verified: null });
+  const [last, setLast] = useState<Answer | null>(null);
+  const onTurn = useCallback((c: StudioTurnCost) => {
+    const r = running.current;
+    r.turns += 1; r.ms += c.latency_ms; r.tokens += c.tokens; r.usd += c.cost_usd ?? 0; r.model = c.model ?? r.model;
+    if (c.final) {
+      setLast({ ...r, verified: c.verified ?? null });
+      running.current = { turns: 0, ms: 0, tokens: 0, usd: 0, model: "", verified: null };
+    }
+  }, []);
+  const tools = useMemo(() => toolDisplay(t), [t]);
+  const homeRef = useRef(home);
+  homeRef.current = home;
   const ai = useMemo(() => collectionsAssistant(es ? "es" : "en", onTurn, [
     { label: t("owner.dashboard.ai.s1"), prompt: t("owner.dashboard.ai.p1") },
     { label: t("owner.dashboard.ai.s2"), prompt: t("owner.dashboard.ai.p2") },
     { label: t("owner.dashboard.ai.s3"), prompt: t("owner.dashboard.ai.p3") },
-  ]), [es, onTurn, t]);
+  ], () => homeRef.current), [es, onTurn, t]);
 
   useEffect(() => {
     getInvoices().then((v) => setInvoices(v.invoices)).catch(() => setError(true));
@@ -93,42 +111,55 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
         open: status === "Open" ? amount : 0,
         overdue: status === "Overdue" ? amount : 0,
         due_month: month(i.due_date), paid_month: month(i.paid_at),
+        paid_month_name: monthName(month(i.paid_at)), year: yearOf(month(i.paid_at) ?? month(i.due_date)),
       };
     });
     const books = [...home.closed_months].sort((a, b) => a.month.localeCompare(b.month)).flatMap((m) => [
-      ...m.in.map((c) => ({ month: m.month, category: c.category, income: num(c.amount), costs: 0 })),
-      ...m.out.map((c) => ({ month: m.month, category: c.category, income: 0, costs: num(c.amount) })),
+      ...m.in.map((c) => ({ month: m.month, month_name: monthName(m.month), year: yearOf(m.month), category: c.category, income: num(c.amount), costs: 0 })),
+      ...m.out.map((c) => ({ month: m.month, month_name: monthName(m.month), year: yearOf(m.month), category: c.category, income: 0, costs: num(c.amount) })),
     ]);
     const pays = payments.filter((p) => p.status === "SUCCESS").map((p) => ({
-      contractor: p.contractor ?? "—", month: month(p.date), amount: num(p.amount), fee: num(p.fee),
+      contractor: p.contractor ?? "—", month: month(p.date), month_name: monthName(month(p.date)), year: yearOf(month(p.date)), amount: num(p.amount), fee: num(p.fee),
     }));
     // Dólares con su signo, en el idioma de la pantalla.
     const cur = { format: "currencyFormat" as const,
                   formatOptions: { format: new Intl.NumberFormat(es ? "es-US" : "en-US", { style: "currency", currency: "USD" }) } };
     const txt = { format: "textFormat" as const };
+    const yr = { format: "integerFormat" as const, formatOptions: { format: "0" } };
     return {
+      // Para la IA (8-nov): qué es cada tabla y qué periodo cubre.
+      description: `The dashboard of ${home.company.name}, a small business paid with PayPal. Today is ${new Date().toISOString().slice(0, 10)}. `
+        + `"invoices": every invoice sent (paid, open, overdue). "books": income and costs per category for each month the bookkeeper closed`
+        + `${home.closed_months.length ? ` (${monthYear(home.closed_months[home.closed_months.length - 1].month)} to ${monthYear(home.closed_months[0].month)})` : ""}. `
+        + `"contractors": payments to contractors with PayPal Payouts. All amounts are USD.`,
       sources: [
         { id: "invoices", name: t("owner.dashboard.src.invoices"), data: inv, fields: [
-          { id: "number", name: t("owner.dashboard.f.number"), ...txt },
-          { id: "customer", name: t("owner.dashboard.f.customer"), ...txt },
+          { id: "number", name: t("owner.dashboard.f.number"), description: "Invoice number", ...txt },
+          { id: "customer", name: t("owner.dashboard.f.customer"), description: "Customer's name", ...txt },
           { id: "concept", name: t("owner.dashboard.f.concept"), ...txt },
-          { id: "status", name: t("owner.dashboard.f.status"), ...txt },
-          { id: "amount", name: t("owner.dashboard.f.amount"), ...cur },
-          { id: "collected", name: t("owner.dashboard.f.collected"), ...cur },
-          { id: "open", name: t("owner.dashboard.f.open"), ...cur },
-          { id: "overdue", name: t("owner.dashboard.f.overdue"), ...cur },
+          { id: "status", name: t("owner.dashboard.f.status"), description: "Paid, Open, Overdue, Refunded or Cancelled", ...txt },
+          { id: "amount", name: t("owner.dashboard.f.amount"), description: "Invoice amount in USD", ...cur },
+          { id: "collected", name: t("owner.dashboard.f.collected"), description: "USD collected (paid invoices only)", ...cur },
+          { id: "open", name: t("owner.dashboard.f.open"), description: "USD still to collect, not yet due", ...cur },
+          { id: "overdue", name: t("owner.dashboard.f.overdue"), description: "USD past due and unpaid", ...cur },
           { id: "due_month", name: t("owner.dashboard.f.dueMonth"), ...txt },
-          { id: "paid_month", name: t("owner.dashboard.f.paidMonth"), ...txt },
+          { id: "paid_month", name: t("owner.dashboard.f.paidMonth"), description: "Month the invoice was paid, YYYY-MM", ...txt },
+          { id: "paid_month_name", name: t("owner.dashboard.f.paidMonthName"), description: "Month name the invoice was paid, e.g. August (the year is in the year field)", ...txt },
+          { id: "year", name: t("owner.dashboard.f.year"), description: "Year of the invoice (paid, or due if unpaid)", ...yr },
         ] },
         { id: "books", name: t("owner.dashboard.src.books"), data: books, fields: [
-          { id: "month", name: t("owner.dashboard.f.month"), ...txt },
-          { id: "category", name: t("owner.dashboard.f.category"), ...txt },
-          { id: "income", name: t("owner.dashboard.f.income"), ...cur },
-          { id: "costs", name: t("owner.dashboard.f.costs"), ...cur },
+          { id: "month", name: t("owner.dashboard.f.month"), description: "Month, YYYY-MM", ...txt },
+          { id: "month_name", name: t("owner.dashboard.f.monthName"), description: "Month name only, e.g. August (the year is in the year field)", ...txt },
+          { id: "year", name: t("owner.dashboard.f.year"), description: "Year, e.g. 2026", ...yr },
+          { id: "category", name: t("owner.dashboard.f.category"), description: "Accounting category", ...txt },
+          { id: "income", name: t("owner.dashboard.f.income"), description: "Income in USD for a closed month", ...cur },
+          { id: "costs", name: t("owner.dashboard.f.costs"), description: "Costs and expenses in USD for a closed month", ...cur },
         ] },
         { id: "contractors", name: t("owner.dashboard.src.contractors"), data: pays, fields: [
           { id: "contractor", name: t("owner.dashboard.f.contractor"), ...txt },
-          { id: "month", name: t("owner.dashboard.f.month"), ...txt },
+          { id: "month", name: t("owner.dashboard.f.month"), description: "Month, YYYY-MM", ...txt },
+          { id: "month_name", name: t("owner.dashboard.f.monthName"), description: "Month name only, e.g. August (the year is in the year field)", ...txt },
+          { id: "year", name: t("owner.dashboard.f.year"), description: "Year, e.g. 2026", ...yr },
           { id: "amount", name: t("owner.dashboard.f.paid"), ...cur },
           { id: "fee", name: t("owner.dashboard.f.fee"), ...cur },
         ] },
@@ -218,15 +249,17 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
       <div className="rounded-xl border border-slate-200 bg-white overflow-hidden" style={{ height: "min(1100px, calc(100vh - 10rem))", minHeight: 560 }}>
         <AgStudioProvider licenseKey={LICENSE} modules={[AgStudioAiModule]}>
           <AgStudio key={es ? "es" : "en"} data={data as never} initialState={initialState} mode={asking ? "edit" : "view"} theme={theme}
-                    localeText={es ? AG_STUDIO_LOCALE_ES_ES : undefined} ai={canAsk ? ai : undefined}
+                    localeText={es ? AG_STUDIO_LOCALE_ES_ES : undefined} ai={canAsk ? ai : undefined} aiText={STUDIO_AI_TEXT} aiToolDisplay={tools}
                     responsiveLayoutBreakpoints={RESPONSIVE}
                     panels={{ edit: { left: [], right: ["ai"] }, view: NARROW ? { left: [], right: [] } : { right: ["filters"] } }}
                     style={{ height: "100%", width: "100%" }} />
         </AgStudioProvider>
       </div>
-      {spent.turns > 0 && (
-        <p className="text-[11px] text-emerald-800">
-          {t("owner.dashboard.ai.spent", { turns: spent.turns, s: (spent.ms / 1000).toFixed(1), tokens: spent.tokens, cost: `$${spent.usd.toFixed(5)}` })}
+      {last && (
+        <p className={`text-[11px] ${last.verified === false ? "text-amber-800" : "text-emerald-800"}`}>
+          {t("owner.dashboard.ai.last", { model: last.model.split("/").pop(), turns: last.turns, s: (last.ms / 1000).toFixed(1),
+                                          tokens: last.tokens, cost: `$${last.usd.toFixed(4)}` })}
+          {" · "}{last.verified === false ? t("owner.dashboard.ai.unverified") : t("owner.dashboard.ai.verified")}
         </p>
       )}
       <p className="text-[11px] text-slate-400">{t("owner.dashboard.note")}</p>

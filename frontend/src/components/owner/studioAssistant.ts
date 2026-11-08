@@ -1,6 +1,6 @@
 import { createAiHarness, directLlmRunner, type AgAiEvent, type AgAiHarnessSetup, type AgAiOutputItem, type AgAiTool,
          type AgLlmAdapter, type AgLlmResponse } from "ag-studio";
-import { getContractors, getInvoices, studioTurn, type StudioTurnCost } from "../../api";
+import { getContractors, getInvoices, studioTurn, type OwnerHome, type StudioTurnCost } from "../../api";
 const OWNER_VIEW_EVENT = "contabu:owner-view";   // el mismo de OwnerApp (sin importarlo: evita un ciclo)
 
 // EL ASISTENTE DEL TABLERO (FASE 16, rama `paypal-contest`, 6-nov) con el Agent Framework de AG Studio.
@@ -13,22 +13,25 @@ const OWNER_VIEW_EVENT = "contabu:owner-view";   // el mismo de OwnerApp (sin im
 
 const INSTRUCTIONS = (lang: string) => `You are the collections assistant of a small business that gets paid with PayPal. You live inside its dashboard in ContaBu and answer questions about its invoices, its payments to contractors and the periods its bookkeeper closed.
 Rules:
-- Never calculate, estimate or guess a number. Every figure you give must come from a tool result (customer_totals, contractor_totals or reminder_candidates). Do not add numbers up yourself.
+- Never calculate, estimate, compare or guess a number. The code's tools already give totals, rankings and the highest and lowest values: read them from there. Every figure you give must come from a tool result, copied exactly as the tool returned it. Do not add, subtract or compute percentages yourself: if you need a total, run execute_query with only that measure and the filter you need (for example the month), without grouping by category, so the query returns the total. The code checks every figure you write against the tool results and hides answers with figures it cannot find.
+- Prefer the code's tools: customer_totals (customers), contractor_totals (contractors), month_totals (anything about months), category_totals (categories, biggest expense), reminder_candidates (who to remind). Only if none of them fits, call view_schema and then execute_query.
+- If no tool can answer the question, say that you can't answer it from the dashboard data. Never answer a different question.
 - You cannot send, create, cancel or change anything. Never say you did.
 - To help collect: call reminder_candidates, recommend who to remind first using the order and the suggested tone it returns (the code decides them from each customer's payment history), and then call open_collections so the owner can review and send the reminder themselves.
+- To show the owner something on the dashboard, call view_schema and then add_page_filter with the exact field id and values; remove_page_filter clears it.
 - Keep answers short: two to five sentences or a short list. Use the customer names and invoice numbers from the tools.
 - Always reply in ${lang === "es" ? "Spanish" : "English"}, even if the tools return English.
-- Call the tool first, then answer once. Do not narrate what you are about to do.`;
+- Call the tools first, then answer once. Do not narrate what you are about to do.`;
 
 const id = (p: string) => `${p}_${Math.random().toString(36).slice(2, 10)}`;
 
 /** El adaptador: un turno de AG Studio → `/studio-ai` → la respuesta y sus eventos (sin streaming: llega entera). */
-export function contabuAdapter(onTurn: (c: StudioTurnCost) => void): AgLlmAdapter {
+export function contabuAdapter(onTurn: (c: StudioTurnCost) => void, lang: string): AgLlmAdapter {
   return {
     executeTurn(request, options) {
       const done: Promise<AgLlmResponse> = studioTurn({
         instructions: request.instructions, input: request.input, tools: request.tools,
-        toolChoice: request.toolChoice,
+        toolChoice: request.toolChoice, model: request.model, lang,
       }, options?.signal).then((r) => { onTurn(r.contabu); return r as unknown as AgLlmResponse; })
         .catch((e: Error) => ({ id: id("resp"), createdAt: Date.now(), status: "failed" as const, output: [],
                                 error: { code: e.message || "ai_failed", message: e.message || "ai_failed" } }));
@@ -104,9 +107,13 @@ const customerTotals: AgAiTool = {
       else if (OPEN.has(i.status)) { if (i.overdue) r.overdue += a; else r.outstanding += a; }
       by.set(k, r);
     }
-    const rows = [...by.values()].sort((a, b) => b.collected - a.collected)
-      .map((r) => ({ customer: r.customer, invoices: r.invoices, collected_usd: money(r.collected), outstanding_usd: money(r.outstanding), overdue_usd: money(r.overdue) }));
-    return ctx.success(JSON.stringify(rows));
+    const list = [...by.values()].sort((a, b) => b.collected - a.collected);
+    const rows = list.map((r, i) => ({ rank_by_collected: i + 1, customer: r.customer, invoices: r.invoices, collected_usd: money(r.collected),
+                                       outstanding_usd: money(r.outstanding), overdue_usd: money(r.overdue) }));
+    // 8-nov: el total y el orden también los da el código (el modelo sumaba él mismo y la revisión de cifras lo ocultaba).
+    const sum = (k: "collected" | "outstanding" | "overdue") => money(list.reduce((t, r) => t + r[k], 0));
+    return ctx.success(JSON.stringify({ customers_ordered_by_collected: rows,
+      all_customers_total: { collected_usd: sum("collected"), outstanding_usd: sum("outstanding"), overdue_usd: sum("overdue") } }));
   },
 };
 
@@ -128,10 +135,67 @@ const contractorTotals: AgAiTool = {
       r.payments += 1; r.paid += Number(p.amount); r.fees += Number(p.fee ?? 0);
       by.set(k, r);
     }
-    const rows = [...by.values()].map((r) => ({ contractor: r.contractor, payments: r.payments, paid_usd: money(r.paid), paypal_fee_usd: money(r.fees) }));
-    return ctx.success(JSON.stringify(rows.length ? rows : { none: "No contractor payments yet." }));
+    const list = [...by.values()].sort((a, b) => b.paid - a.paid);
+    const rows = list.map((r) => ({ contractor: r.contractor, payments: r.payments, paid_usd: money(r.paid), paypal_fee_usd: money(r.fees) }));
+    if (!rows.length) return ctx.success(JSON.stringify({ none: "No contractor payments yet." }));
+    return ctx.success(JSON.stringify({ contractors_ordered_by_paid: rows,
+      all_contractors_total: { paid_usd: money(list.reduce((t, r) => t + r.paid, 0)), paypal_fee_usd: money(list.reduce((t, r) => t + r.fees, 0)) } }));
   },
 };
+
+// 8-nov (prueba de 10 preguntas): con `execute_query` el modelo a veces sumaba él mismo (y una vez mal: $12,943.10 contra
+// $12,883.10; la revisión de cifras lo ocultó) o ordenaba mal. Los totales por mes y por categoría salen del CÓDIGO, de
+// los periodos cerrados que ya calculó SQL (`OwnerHome.closed_months`).
+const MONTH = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const monthLabel = (ym: string) => `${MONTH[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
+
+function monthTotalsTool(home: () => OwnerHome): AgAiTool {
+  return {
+    name: "month_totals", kind: "client",
+    description: "Income, costs and expenses, and their difference (USD) for each month the bookkeeper closed, computed by the code. Use it for any question about months: best month, costs in a month, income in a month.",
+    schema: () => ({ name: "month_totals", kind: "client",
+                     description: "Income, costs and their difference per closed month, computed by the code.",
+                     parameters: { type: "object", properties: {}, additionalProperties: false } }),
+    async execute(_call, ctx) {
+      const ms = [...home().closed_months].sort((a, b) => a.month.localeCompare(b.month)).map((m) => ({
+        month: monthLabel(m.month), income: Number(m.total_in), costs: Number(m.total_out), net: Number(m.total_in) - Number(m.total_out),
+      }));
+      if (!ms.length) return ctx.success(JSON.stringify({ none: "No closed months yet." }));
+      const fmt = (m: typeof ms[number]) => ({ month: m.month, income_usd: m.income.toFixed(2), costs_usd: m.costs.toFixed(2),
+                                               income_minus_costs_usd: m.net.toFixed(2) });
+      // 8-nov: el modelo comparó mal ("septiembre" en vez de julio): el código dice cuál es el mayor y el menor.
+      const top = (k: "income" | "costs" | "net", hi: boolean) => fmt([...ms].sort((a, b) => (hi ? b[k] - a[k] : a[k] - b[k]))[0]);
+      return ctx.success(JSON.stringify({
+        months_in_order: ms.map(fmt),
+        highest_income_month: top("income", true), lowest_income_month: top("income", false),
+        highest_costs_month: top("costs", true), lowest_costs_month: top("costs", false),
+        best_month_income_minus_costs: top("net", true),
+        all_closed_months_total: { income_usd: ms.reduce((t, m) => t + m.income, 0).toFixed(2), costs_usd: ms.reduce((t, m) => t + m.costs, 0).toFixed(2),
+                                   income_minus_costs_usd: ms.reduce((t, m) => t + m.net, 0).toFixed(2) },
+      }));
+    },
+  };
+}
+
+function categoryTotalsTool(home: () => OwnerHome): AgAiTool {
+  return {
+    name: "category_totals", kind: "client",
+    description: "Costs and expenses by accounting category (USD) over all closed months, largest first, computed by the code. Use it for questions about categories or the biggest expense.",
+    schema: () => ({ name: "category_totals", kind: "client",
+                     description: "Costs by category over all closed months, largest first, computed by the code.",
+                     parameters: { type: "object", properties: {}, additionalProperties: false } }),
+    async execute(_call, ctx) {
+      const by = new Map<string, number>();
+      for (const m of home().closed_months) for (const c of m.out) by.set(c.category, (by.get(c.category) ?? 0) + Number(c.amount));
+      const list = [...by.entries()].sort((a, b) => b[1] - a[1]);
+      if (!list.length) return ctx.success(JSON.stringify({ none: "No closed months yet." }));
+      return ctx.success(JSON.stringify({
+        categories_largest_first: list.map(([category, v], i) => ({ rank: i + 1, category, costs_usd: v.toFixed(2) })),
+        all_categories_total_usd: list.reduce((t, [, v]) => t + v, 0).toFixed(2),
+      }));
+    },
+  };
+}
 
 /** Abre Cobros para que el dueño revise y mande el recordatorio (no envía nada). */
 const openCollections: AgAiTool = {
@@ -147,17 +211,57 @@ const openCollections: AgAiTool = {
   },
 };
 
+// 8-nov: los modelos del asistente, elegidos con la prueba de modelos (DEVPOST §4.4): los únicos que filtraron Y consultaron
+// el tablero. El primero es el de siempre. Con `?ai=all-models` el selector muestra también los que fallaron (para repetir la
+// prueba). El backend solo acepta su lista cerrada (`studio_ai.STUDIO_MODELS`).
+const PASSED = [
+  { id: "Qwen/Qwen3-235B-A22B-Instruct-2507", label: "Qwen3 235B" },
+  { id: "deepseek-ai/DeepSeek-V4-Flash-0731", label: "DeepSeek V4 Flash" },
+  { id: "zai-org/GLM-5.3-Flash", label: "GLM 5.3 Flash" },
+];
+const FAILED = [
+  { id: "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", label: "Nemotron 3 Nano" },
+  { id: "nvidia/Nemotron-3_5-Lightning", label: "Nemotron 3.5 Lightning" },
+  { id: "nvidia/nemotron-3-super-120b-a12b", label: "Nemotron 3 Super" },
+  { id: "openai/gpt-oss-120b", label: "gpt-oss 120B" },
+];
+const ALL_MODELS = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("ai") === "all-models";
+const MODELS = ALL_MODELS ? [...PASSED, ...FAILED] : PASSED;
+
+/** Descripciones cortas de las herramientas de AG Studio (8-nov): las originales son largas y un modelo se pierde. */
+export const STUDIO_AI_TEXT = {
+  "tools.view_schema.description": "List the tables and fields of this dashboard (ids like invoices.customer). Call it first.",
+  "tools.execute_query.description": "Run a query on the dashboard data: pick field ids from view_schema, group by category fields and sum number fields.",
+  "tools.add_page_filter.description": "Filter the whole dashboard to some values of one field, e.g. invoices.customer = Oak Street Bakery.",
+  "tools.remove_page_filter.description": "Remove a filter from the dashboard.",
+  "tools.view_report.description": "See the widgets on the dashboard and what each one shows.",
+};
+
+/** Cómo se ven nuestras herramientas en el chat (8-nov): nombres legibles, no `customer_totals`. */
+export function toolDisplay(t: (k: string) => string) {
+  const label = (key: string) => ({ label: () => ({ text: t(`owner.dashboard.ai.tool.${key}`) }) });
+  return {
+    customer_totals: label("customerTotals"), contractor_totals: label("contractorTotals"),
+    month_totals: label("monthTotals"), category_totals: label("categoryTotals"),
+    reminder_candidates: label("reminderCandidates"), open_collections: label("openCollections"),
+  };
+}
+
 export function collectionsAssistant(lang: string, onTurn: (c: StudioTurnCost) => void,
-                                     starters: { label: string; prompt: string }[]): AgAiHarnessSetup {
-  const adapter = contabuAdapter(onTurn);
-  return ({ api }) => createAiHarness(api as unknown as Parameters<typeof createAiHarness>[0], () => ({
+                                     starters: { label: string; prompt: string }[], home: () => OwnerHome): AgAiHarnessSetup {
+  const adapter = contabuAdapter(onTurn, lang);
+  return ({ api }) => createAiHarness(api as unknown as Parameters<typeof createAiHarness>[0], ({ tools }) => ({
     agents: [directLlmRunner({
       id: "collections", name: "ContaBu", adapter, maxTurns: 8,
       description: "Collections assistant for the owner's dashboard",
       instructions: () => INSTRUCTIONS(lang),
-      tools: () => [customerTotals, contractorTotals, reminderCandidates, openCollections],
+      // Nuestras herramientas (cifras sumadas por el código) y las de AG Studio que solo leen o filtran el tablero.
+      tools: () => [customerTotals, contractorTotals, monthTotalsTool(home), categoryTotalsTool(home), reminderCandidates, openCollections,
+                    tools.studio.viewSchema(), tools.studio.viewReport(), tools.studio.executeQuery(),
+                    tools.studio.addPageFilter(), tools.studio.removePageFilter()],
     })],
     primary: "collections",
+    models: MODELS,
     promptStarters: starters,
   }));
 }

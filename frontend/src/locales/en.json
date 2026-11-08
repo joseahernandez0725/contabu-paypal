@@ -2438,7 +2438,10 @@
         "costs": "Costs and expenses",
         "contractor": "Contractor",
         "paid": "Paid",
-        "fee": "PayPal fee"
+        "fee": "PayPal fee",
+        "paidMonthName": "Month paid",
+        "monthName": "Month name",
+        "year": "Year"
       },
       "w": {
         "collected": "Collected with PayPal",
@@ -2455,13 +2458,23 @@
         "open": "Ask the assistant",
         "close": "Close the assistant",
         "rules": "The assistant reads this dashboard and suggests who to remind. It never sends anything and never calculates: every figure comes from a query on your data. Each answer shows its time and cost.",
-        "spent": "Assistant: {{turns}} model turns · {{s}} s · {{tokens}} tokens · {{cost}}",
         "s1": "Who should I remind?",
         "p1": "Who should I remind to pay first, and with what tone?",
         "s2": "Best customers",
         "p2": "Which customers paid me the most this year?",
         "s3": "Contractors",
-        "p3": "How much did I pay each contractor?"
+        "p3": "How much did I pay each contractor?",
+        "last": "Last answer: {{model}} · {{turns}} model turns · {{s}} s · {{tokens}} tokens · {{cost}}",
+        "verified": "✓ every figure checked by the code against your data",
+        "unverified": "⚠ a figure could not be verified, so the answer was hidden",
+        "tool": {
+          "customerTotals": "Totals by customer (added up by the code)",
+          "contractorTotals": "Totals by contractor (added up by the code)",
+          "reminderCandidates": "Who to remind (ordered by the code)",
+          "openCollections": "Opened Invoices for you",
+          "monthTotals": "Totals by closed month (computed by the code)",
+          "categoryTotals": "Costs by category (computed by the code)"
+        }
       }
     }
   }

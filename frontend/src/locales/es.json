@@ -2567,7 +2567,10 @@
         "costs": "Costos y gastos",
         "contractor": "Contratista",
         "paid": "Pagado",
-        "fee": "Comisión de PayPal"
+        "fee": "Comisión de PayPal",
+        "paidMonthName": "Mes de pago (nombre)",
+        "monthName": "Nombre del mes",
+        "year": "Año"
       },
       "w": {
         "collected": "Cobrado con PayPal",
@@ -2584,13 +2587,23 @@
         "open": "Preguntarle al asistente",
         "close": "Cerrar el asistente",
         "rules": "El asistente lee este tablero y sugiere a quién recordarle el pago. Nunca envía nada ni calcula: cada cifra sale de una consulta sobre tus datos. Cada respuesta muestra su tiempo y su costo.",
-        "spent": "Asistente: {{turns}} turnos del modelo · {{s}} s · {{tokens}} tokens · {{cost}}",
         "s1": "¿A quién le recuerdo?",
         "p1": "¿A quién le recuerdo primero que me pague, y con qué tono?",
         "s2": "Mejores clientes",
         "p2": "¿Qué clientes me pagaron más este año?",
         "s3": "Contratistas",
-        "p3": "¿Cuánto le pagué a cada contratista?"
+        "p3": "¿Cuánto le pagué a cada contratista?",
+        "last": "Última respuesta: {{model}} · {{turns}} turnos del modelo · {{s}} s · {{tokens}} tokens · {{cost}}",
+        "verified": "✓ cada cifra revisada por el código contra tus datos",
+        "unverified": "⚠ una cifra no se pudo verificar y la respuesta se ocultó",
+        "tool": {
+          "customerTotals": "Totales por cliente (sumados por el código)",
+          "contractorTotals": "Totales por contratista (sumados por el código)",
+          "reminderCandidates": "A quién recordarle (ordenado por el código)",
+          "openCollections": "Abrí Cobros por ti",
+          "monthTotals": "Totales por mes cerrado (calculados por el código)",
+          "categoryTotals": "Costos por categoría (calculados por el código)"
+        }
       }
     }
   }
