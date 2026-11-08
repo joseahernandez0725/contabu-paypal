@@ -2579,6 +2579,18 @@
         "months": "Ingresos y costos por mes cerrado",
         "costs": "Costos y gastos por categoría",
         "list": "Tus facturas"
+      },
+      "ai": {
+        "open": "Preguntarle al asistente",
+        "close": "Cerrar el asistente",
+        "rules": "El asistente lee este tablero y sugiere a quién recordarle el pago. Nunca envía nada ni calcula: cada cifra sale de una consulta sobre tus datos. Cada respuesta muestra su tiempo y su costo.",
+        "spent": "Asistente: {{turns}} turnos del modelo · {{s}} s · {{tokens}} tokens · {{cost}}",
+        "s1": "¿A quién le recuerdo?",
+        "p1": "¿A quién le recuerdo primero que me pague, y con qué tono?",
+        "s2": "Mejores clientes",
+        "p2": "¿Qué clientes me pagaron más este año?",
+        "s3": "Contratistas",
+        "p3": "¿Cuánto le pagué a cada contratista?"
       }
     }
   }

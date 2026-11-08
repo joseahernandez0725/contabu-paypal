@@ -1592,6 +1592,18 @@ export const remindInvoice = (id: number) => ownerCall<InvoicesView>(`/invoices/
 export interface PayerHistory { paid: number; late: number; kind: "new" | "on_time" | "sometimes_late" | "often_late"; tone: "friendly" | "firm" }
 export interface ReminderDraft { subject: string; body: string; mailto: string | null; to: string | null; sent_to_ai: string;
                                  tone?: "friendly" | "firm"; payer?: PayerHistory | null; ai?: AiCall }
+// El asistente del Tablero (AG Studio, rama `paypal-contest`, 6-nov): un turno del modelo, por nuestro backend.
+export interface StudioTurnCost { latency_ms: number; tokens: number; cost_usd: number | null }
+export async function studioTurn(body: unknown, signal?: AbortSignal): Promise<{ output: unknown[]; contabu: StudioTurnCost } & Record<string, unknown>> {
+  const res = await fetch(`${API}/api/owner/companies/${cid()}/studio-ai`, {
+    method: "POST", signal, headers: { ...(await authHeaders()), "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}));
+    throw new Error(typeof b?.detail === "string" ? b.detail : `http_${res.status}`);
+  }
+  return res.json();
+}
 export const reminderDraft = (id: number, lang: string, tone: "friendly" | "firm") =>
   ownerCall<ReminderDraft>(`/invoices/${id}/reminder-draft`, "POST", { lang, tone });
 export const invoiceQR = (id: number) => ownerCall<{ png_base64: string }>(`/invoices/${id}/qr`);

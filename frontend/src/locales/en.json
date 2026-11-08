@@ -2450,6 +2450,18 @@
         "months": "Income and costs by closed month",
         "costs": "Costs and expenses by category",
         "list": "Your invoices"
+      },
+      "ai": {
+        "open": "Ask the assistant",
+        "close": "Close the assistant",
+        "rules": "The assistant reads this dashboard and suggests who to remind. It never sends anything and never calculates: every figure comes from a query on your data. Each answer shows its time and cost.",
+        "spent": "Assistant: {{turns}} model turns · {{s}} s · {{tokens}} tokens · {{cost}}",
+        "s1": "Who should I remind?",
+        "p1": "Who should I remind to pay first, and with what tone?",
+        "s2": "Best customers",
+        "p2": "Which customers paid me the most this year?",
+        "s3": "Contractors",
+        "p3": "How much did I pay each contractor?"
       }
     }
   }

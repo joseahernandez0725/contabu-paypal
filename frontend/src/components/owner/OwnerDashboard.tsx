@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgStudio, AgStudioProvider } from "ag-studio-react";
-import { studioTheme, type AgReportState, type AgResponsiveLayoutBreakpoint } from "ag-studio";
+import { AgStudioAiModule, studioTheme, type AgReportState, type AgResponsiveLayoutBreakpoint } from "ag-studio";
 import { AG_STUDIO_LOCALE_ES_ES } from "ag-studio-locale";
-import { getContractors, getInvoices, type ContractorPayment, type OwnerHome, type OwnerInvoice } from "../../api";
+import { getContractors, getInvoices, type ContractorPayment, type OwnerHome, type OwnerInvoice, type StudioTurnCost } from "../../api";
+import { inTour } from "../../demo";
+import { collectionsAssistant } from "./studioAssistant";
 
 // EL TABLERO DEL DUEÑO CON AG STUDIO (FASE 16, solo en la rama `paypal-contest`: AG Studio es de pago y ContaBu no
 // depende de él; Jose, 2-nov y 6-nov). Premio "Best Use of AG Grid" (pide AG Studio, 16.B §10).
@@ -61,6 +63,17 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
   const [invoices, setInvoices] = useState<OwnerInvoice[] | null>(null);
   const [payments, setPayments] = useState<ContractorPayment[]>([]);
   const [error, setError] = useState(false);
+  // El asistente (Agent Framework): solo el dueño en su libro; ni la vista previa del bookkeeper ni la visita (sin IA).
+  const canAsk = !home.preview && !inTour();
+  const [asking, setAsking] = useState(false);
+  const [spent, setSpent] = useState({ turns: 0, ms: 0, tokens: 0, usd: 0 });
+  const onTurn = useCallback((c: StudioTurnCost) => setSpent((s) => ({ turns: s.turns + 1, ms: s.ms + c.latency_ms,
+                                                                       tokens: s.tokens + c.tokens, usd: s.usd + (c.cost_usd ?? 0) })), []);
+  const ai = useMemo(() => collectionsAssistant(es ? "es" : "en", onTurn, [
+    { label: t("owner.dashboard.ai.s1"), prompt: t("owner.dashboard.ai.p1") },
+    { label: t("owner.dashboard.ai.s2"), prompt: t("owner.dashboard.ai.p2") },
+    { label: t("owner.dashboard.ai.s3"), prompt: t("owner.dashboard.ai.p3") },
+  ]), [es, onTurn, t]);
 
   useEffect(() => {
     getInvoices().then((v) => setInvoices(v.invoices)).catch(() => setError(true));
@@ -190,15 +203,32 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
   if (!data) return <div className="flex justify-center py-16"><span className="loading loading-spinner loading-lg text-brand-green" /></div>;
   return (
     <div className="space-y-2">
-      <p className="text-sm text-slate-600">{t("owner.dashboard.intro")}</p>
-      {/* `key`: AG Studio fija el idioma al crearse; al cambiarlo se vuelve a crear. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="flex-1 min-w-[16rem] text-sm text-slate-600">{t("owner.dashboard.intro")}</p>
+        {canAsk && (
+          <button onClick={() => setAsking((a) => !a)}
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-semibold ${asking ? "border border-[#0070BA] text-[#0070BA] bg-white" : "text-[#003087] bg-[#FFC439] hover:bg-[#f2ba36]"}`}>
+            {asking ? t("owner.dashboard.ai.close") : t("owner.dashboard.ai.open")}
+          </button>
+        )}
+      </div>
+      {asking && <p className="text-[11px] text-slate-500">{t("owner.dashboard.ai.rules")}</p>}
+      {/* `key`: AG Studio fija el idioma al crearse; al cambiarlo se vuelve a crear. El chat de AG Studio solo existe en
+          el modo de edición: con el asistente abierto se pasa a ese modo, pero solo con el panel del chat. */}
       <div className="rounded-xl border border-slate-200 bg-white overflow-hidden" style={{ height: "min(1100px, calc(100vh - 10rem))", minHeight: 560 }}>
-        <AgStudioProvider licenseKey={LICENSE}>
-          <AgStudio key={es ? "es" : "en"} data={data as never} initialState={initialState} mode="view" theme={theme}
-                    localeText={es ? AG_STUDIO_LOCALE_ES_ES : undefined}
-                    responsiveLayoutBreakpoints={RESPONSIVE} panels={NARROW ? { view: { left: [], right: [] } } : undefined} style={{ height: "100%", width: "100%" }} />
+        <AgStudioProvider licenseKey={LICENSE} modules={[AgStudioAiModule]}>
+          <AgStudio key={es ? "es" : "en"} data={data as never} initialState={initialState} mode={asking ? "edit" : "view"} theme={theme}
+                    localeText={es ? AG_STUDIO_LOCALE_ES_ES : undefined} ai={canAsk ? ai : undefined}
+                    responsiveLayoutBreakpoints={RESPONSIVE}
+                    panels={{ edit: { left: [], right: ["ai"] }, view: NARROW ? { left: [], right: [] } : { right: ["filters"] } }}
+                    style={{ height: "100%", width: "100%" }} />
         </AgStudioProvider>
       </div>
+      {spent.turns > 0 && (
+        <p className="text-[11px] text-emerald-800">
+          {t("owner.dashboard.ai.spent", { turns: spent.turns, s: (spent.ms / 1000).toFixed(1), tokens: spent.tokens, cost: `$${spent.usd.toFixed(5)}` })}
+        </p>
+      )}
       <p className="text-[11px] text-slate-400">{t("owner.dashboard.note")}</p>
     </div>
   );

@@ -115,6 +115,7 @@ CLIENT_ALLOWED: set[tuple[str, str]] = {
     ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/send"),  # enviarla, tras confirmar en pantalla
     ("POST", "/api/owner/companies/{company_id}/invoices/refresh"),  # preguntar a PayPal si ya se pagó
     ("POST", "/api/owner/companies/{company_id}/invoices/voice"),  # dictado → el formulario (no envía nada)
+    ("POST", "/api/owner/companies/{company_id}/studio-ai"),       # un turno del asistente del Tablero (solo lee)
     # Recordatorios y QR (1-nov): el recordatorio oficial de PayPal, el borrador de un mensaje personal y el QR de pago.
     ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/remind"),
     ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/reminder-draft"),
@@ -167,6 +168,7 @@ OWNER_ONLY: set[tuple[str, str]] = {
     ("POST", "/api/owner/companies/{company_id}/invoices"),
     ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/send"),
     ("POST", "/api/owner/companies/{company_id}/invoices/voice"),
+    ("POST", "/api/owner/companies/{company_id}/studio-ai"),
     ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/remind"),
     ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/reminder-draft"),
     ("GET", "/api/owner/companies/{company_id}/invoices/{invoice_id}/qr"),
@@ -262,6 +264,8 @@ BODIES: dict[tuple[str, str], dict] = {
                                                             "due_date": "2099-01-01"},
     # Cobro por voz (1-nov): sin cliente reconocido no llama a la IA (responde que elija el cliente).
     ("POST", "/api/owner/companies/{company_id}/invoices/voice"): {"text": "factura de prueba por 10 dólares"},
+    # El asistente del Tablero (6-nov): sin conversación responde 422 ANTES de llamar a la IA.
+    ("POST", "/api/owner/companies/{company_id}/studio-ai"): {"input": []},
     # Recordatorios (1-nov): factura 999999 → para el dueño un 404, para el bookkeeper 403 (OWNER_ONLY).
     ("POST", "/api/owner/companies/{company_id}/invoices/{invoice_id}/reminder-draft"): {"lang": "en"},
     # Disputas (3-nov): disputa 999999 → para el dueño un 404, para el bookkeeper 403 (OWNER_ONLY).
