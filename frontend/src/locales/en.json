@@ -2464,16 +2464,29 @@
         "p2": "Which customers paid me the most this year?",
         "s3": "Contractors",
         "p3": "How much did I pay each contractor?",
-        "last": "Last answer: {{model}} · {{turns}} model turns · {{s}} s · {{tokens}} tokens · {{cost}}",
-        "verified": "✓ every figure checked by the code against your data",
-        "unverified": "⚠ a figure could not be verified, so the answer was hidden",
         "tool": {
-          "customerTotals": "Totals by customer (added up by the code)",
-          "contractorTotals": "Totals by contractor (added up by the code)",
+          "customerTotals": "Totals by customer (SQL)",
+          "contractorTotals": "Totals by contractor (SQL)",
           "reminderCandidates": "Who to remind (ordered by the code)",
           "openCollections": "Opened Invoices for you",
-          "monthTotals": "Totals by closed month (computed by the code)",
-          "categoryTotals": "Costs by category (computed by the code)"
+          "monthTotals": "Totals by closed month (SQL)",
+          "categoryTotals": "Costs by category (SQL)",
+          "studio": {
+            "view_schema": "AG Studio: read the data fields",
+            "view_report": "AG Studio: read the dashboard",
+            "execute_query": "AG Studio: query the dashboard data",
+            "add_page_filter": "AG Studio: filter the dashboard",
+            "remove_page_filter": "AG Studio: clear a filter"
+          }
+        },
+        "step": {
+          "model": "{{model}} · {{s}} s",
+          "asked": "asked for: {{tools}}",
+          "wrote": "wrote the answer",
+          "sql": "{{tool}} — SQL on the server, {{ms}} ms",
+          "checkOk": "The code checked {{count}} figure(s) against the data: all found",
+          "checkBad": "The code could not find {{figures}} in the data: the answer was hidden",
+          "checkNone": "The answer has no figures to check"
         }
       }
     }

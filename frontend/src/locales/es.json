@@ -2593,16 +2593,29 @@
         "p2": "¿Qué clientes me pagaron más este año?",
         "s3": "Contratistas",
         "p3": "¿Cuánto le pagué a cada contratista?",
-        "last": "Última respuesta: {{model}} · {{turns}} turnos del modelo · {{s}} s · {{tokens}} tokens · {{cost}}",
-        "verified": "✓ cada cifra revisada por el código contra tus datos",
-        "unverified": "⚠ una cifra no se pudo verificar y la respuesta se ocultó",
         "tool": {
-          "customerTotals": "Totales por cliente (sumados por el código)",
-          "contractorTotals": "Totales por contratista (sumados por el código)",
+          "customerTotals": "Totales por cliente (SQL)",
+          "contractorTotals": "Totales por contratista (SQL)",
           "reminderCandidates": "A quién recordarle (ordenado por el código)",
           "openCollections": "Abrí Cobros por ti",
-          "monthTotals": "Totales por mes cerrado (calculados por el código)",
-          "categoryTotals": "Costos por categoría (calculados por el código)"
+          "monthTotals": "Totales por mes cerrado (SQL)",
+          "categoryTotals": "Costos por categoría (SQL)",
+          "studio": {
+            "view_schema": "AG Studio: leer los campos de datos",
+            "view_report": "AG Studio: leer el tablero",
+            "execute_query": "AG Studio: consultar los datos del tablero",
+            "add_page_filter": "AG Studio: filtrar el tablero",
+            "remove_page_filter": "AG Studio: quitar un filtro"
+          }
+        },
+        "step": {
+          "model": "{{model}} · {{s}} s",
+          "asked": "pidió: {{tools}}",
+          "wrote": "redactó la respuesta",
+          "sql": "{{tool}} — SQL en el servidor, {{ms}} ms",
+          "checkOk": "El código revisó {{count}} cifra(s) contra los datos: todas encontradas",
+          "checkBad": "El código no encontró {{figures}} en los datos: la respuesta se ocultó",
+          "checkNone": "La respuesta no tiene cifras que revisar"
         }
       }
     }

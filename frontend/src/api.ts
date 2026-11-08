@@ -1594,7 +1594,11 @@ export interface ReminderDraft { subject: string; body: string; mailto: string |
                                  tone?: "friendly" | "firm"; payer?: PayerHistory | null; ai?: AiCall }
 // El asistente del Tablero (AG Studio, rama `paypal-contest`, 6-nov): un turno del modelo, por nuestro backend.
 export interface StudioTurnCost { latency_ms: number; tokens: number; cost_usd: number | null; model?: string;
-                                  final?: boolean; verified?: boolean | null; unverified?: string[] }
+                                  final?: boolean; verified?: boolean | null; unverified?: string[]; steps?: StudioStep[] }
+/** Un paso de "Lo que hizo la IA" (8-nov): una vuelta del modelo, una herramienta SQL o la revisión de cifras. */
+export type StudioStep = { kind: "model"; model: string; ms: number; tokens: number; cost_usd: number | null; tools: string[] }
+                       | { kind: "sql"; tool: string; ms: number }
+                       | { kind: "check"; figures: number; unverified: string[] };
 export async function studioTurn(body: unknown, signal?: AbortSignal): Promise<{ output: unknown[]; contabu: StudioTurnCost } & Record<string, unknown>> {
   const res = await fetch(`${API}/api/owner/companies/${cid()}/studio-ai`, {
     method: "POST", signal, headers: { ...(await authHeaders()), "Content-Type": "application/json" }, body: JSON.stringify(body),

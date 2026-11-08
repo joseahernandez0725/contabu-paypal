@@ -3,9 +3,10 @@ import { useTranslation } from "react-i18next";
 import { AgStudio, AgStudioProvider } from "ag-studio-react";
 import { AgStudioAiModule, studioTheme, type AgReportState, type AgResponsiveLayoutBreakpoint } from "ag-studio";
 import { AG_STUDIO_LOCALE_ES_ES } from "ag-studio-locale";
-import { getContractors, getInvoices, type ContractorPayment, type OwnerHome, type OwnerInvoice, type StudioTurnCost } from "../../api";
+import { getContractors, getInvoices, type ContractorPayment, type OwnerHome, type OwnerInvoice, type StudioStep, type StudioTurnCost } from "../../api";
 import { inTour } from "../../demo";
 import { collectionsAssistant, STUDIO_AI_TEXT, toolDisplay } from "./studioAssistant";
+import AiTrace, { type TraceStep } from "./AiTrace";
 
 // EL TABLERO DEL DUEÑO CON AG STUDIO (FASE 16, solo en la rama `paypal-contest`: AG Studio es de pago y ContaBu no
 // depende de él; Jose, 2-nov y 6-nov). Premio "Best Use of AG Grid" (pide AG Studio, 16.B §10).
@@ -73,25 +74,28 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
   const canAsk = !home.preview && !inTour();
   const [asking, setAsking] = useState(false);
   // Por cada respuesta (8-nov): se acumulan sus turnos hasta el final y se muestra el resumen, con la revisión de cifras.
-  type Answer = { turns: number; ms: number; tokens: number; usd: number; model: string; verified: boolean | null };
-  const running = useRef<Answer>({ turns: 0, ms: 0, tokens: 0, usd: 0, model: "", verified: null });
+  type Answer = { turns: number; ms: number; tokens: number; usd: number; model: string; verified: boolean | null; steps: StudioStep[] };
+  const running = useRef<Answer>({ turns: 0, ms: 0, tokens: 0, usd: 0, model: "", verified: null, steps: [] });
   const [last, setLast] = useState<Answer | null>(null);
   const onTurn = useCallback((c: StudioTurnCost) => {
     const r = running.current;
-    r.turns += 1; r.ms += c.latency_ms; r.tokens += c.tokens; r.usd += c.cost_usd ?? 0; r.model = c.model ?? r.model;
+    r.turns += (c.steps ?? []).filter((x) => x.kind === "model").length || 1;
+    r.ms += c.latency_ms; r.tokens += c.tokens; r.usd += c.cost_usd ?? 0; r.model = c.model ?? r.model;
+    r.steps = [...r.steps, ...(c.steps ?? [])];
     if (c.final) {
       setLast({ ...r, verified: c.verified ?? null });
-      running.current = { turns: 0, ms: 0, tokens: 0, usd: 0, model: "", verified: null };
+      running.current = { turns: 0, ms: 0, tokens: 0, usd: 0, model: "", verified: null, steps: [] };
     }
   }, []);
   const tools = useMemo(() => toolDisplay(t), [t]);
-  const homeRef = useRef(home);
-  homeRef.current = home;
+  const toolName = (n: string) => (t(`owner.dashboard.ai.tool.${n === "customer_totals" ? "customerTotals" : n === "contractor_totals" ? "contractorTotals"
+    : n === "month_totals" ? "monthTotals" : n === "category_totals" ? "categoryTotals" : n === "reminder_candidates" ? "reminderCandidates"
+    : n === "open_collections" ? "openCollections" : `studio.${n}`}`, { name: n, defaultValue: n }));
   const ai = useMemo(() => collectionsAssistant(es ? "es" : "en", onTurn, [
     { label: t("owner.dashboard.ai.s1"), prompt: t("owner.dashboard.ai.p1") },
     { label: t("owner.dashboard.ai.s2"), prompt: t("owner.dashboard.ai.p2") },
     { label: t("owner.dashboard.ai.s3"), prompt: t("owner.dashboard.ai.p3") },
-  ], () => homeRef.current), [es, onTurn, t]);
+  ]), [es, onTurn, t]);
 
   useEffect(() => {
     getInvoices().then((v) => setInvoices(v.invoices)).catch(() => setError(true));
@@ -256,11 +260,20 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
         </AgStudioProvider>
       </div>
       {last && (
-        <p className={`text-[11px] ${last.verified === false ? "text-amber-800" : "text-emerald-800"}`}>
-          {t("owner.dashboard.ai.last", { model: last.model.split("/").pop(), turns: last.turns, s: (last.ms / 1000).toFixed(1),
-                                          tokens: last.tokens, cost: `$${last.usd.toFixed(4)}` })}
-          {" · "}{last.verified === false ? t("owner.dashboard.ai.unverified") : t("owner.dashboard.ai.verified")}
-        </p>
+        <div className="max-w-xl">
+          <AiTrace ai={{ model: last.model, latency_ms: last.ms, tokens: last.tokens, cost_usd: last.usd }}
+                   steps={last.steps.map((x): TraceStep =>
+                     x.kind === "model"
+                       ? { label: t("owner.dashboard.ai.step.model", { model: x.model.split("/").pop(), s: (x.ms / 1000).toFixed(1) }),
+                           detail: x.tools.length ? t("owner.dashboard.ai.step.asked", { tools: x.tools.map((n) => toolName(n)).join(", ") })
+                                                  : t("owner.dashboard.ai.step.wrote") }
+                       : x.kind === "sql"
+                         ? { label: t("owner.dashboard.ai.step.sql", { tool: toolName(x.tool), ms: x.ms }) }
+                         : x.unverified.length
+                           ? { label: t("owner.dashboard.ai.step.checkBad", { figures: x.unverified.join(", ") }), tone: "warn" }
+                           : x.figures ? { label: t("owner.dashboard.ai.step.checkOk", { count: x.figures }) }
+                                       : { label: t("owner.dashboard.ai.step.checkNone") })} />
+        </div>
       )}
       <p className="text-[11px] text-slate-400">{t("owner.dashboard.note")}</p>
     </div>

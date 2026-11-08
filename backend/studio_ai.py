@@ -27,6 +27,7 @@ from sqlmodel import Session
 import agent_calls
 import demo
 import nemotron
+import studio_tools
 from auth import current_user
 from db import get_session
 from invoices import _owner_only
@@ -38,6 +39,7 @@ AGENT = "studio_assistant"
 MAX_ITEMS = 80          # turnos de conversación que se aceptan por petición
 MAX_CHARS = 120_000     # tope del pedido completo (instrucciones + conversación + herramientas)
 MAX_TOKENS = 1500
+MAX_SERVER_LOOPS = 4    # vueltas del ciclo en el servidor por cada llamada del navegador
 # 8-nov: con las consultas de AG Studio (`execute_query`, esquema grande y anidado) fallaron Nano (8 turnos, 105k tokens) y
 # Super (10 turnos, 130k tokens). Para comparar modelos, el chat puede pedir uno de esta lista CERRADA (✅ catálogo de Nebius
 # Token Factory, 8-nov, con precio por millón de tokens: entrada, salida); cualquier otro se ignora y se usa el de siempre.
@@ -99,8 +101,9 @@ def tool_numbers(items: list[dict]) -> set[float]:
     """Cada número que devolvió una herramienta en esta conversación (sin las comas de miles)."""
     nums: set[float] = set()
     for it in items:
-        if it.get("type") == "function_call_output":
-            for m in _ANY_NUM_RE.finditer(str(it.get("output") or "").replace(",", "")):
+        text = it.get("output") if it.get("type") == "function_call_output" else it.get("result")
+        if it.get("type") in ("function_call_output", "function_call") and text is not None:
+            for m in _ANY_NUM_RE.finditer(str(text).replace(",", "")):
                 try:
                     nums.add(round(float(m.group(0)), 2))
                 except ValueError:
@@ -113,6 +116,10 @@ def unverified_amounts(text: str, items: list[dict]) -> list[str]:
     return [raw for raw, v in amounts_in(text) if v not in known and -v not in known]
 
 
+_TOO_MANY = {
+    "es": "No pude terminar esa respuesta en los pasos permitidos. Pregúntame algo más concreto.",
+    "en": "I couldn't finish that answer within the allowed steps. Try asking something narrower.",
+}
 _UNVERIFIED = {
     "es": "No pude verificar estas cifras con tus datos ({figures}), así que no te muestro esa respuesta. "
           "Pregúntame de otra forma o mira el tablero.",
@@ -162,6 +169,8 @@ def to_messages(instructions: Optional[str], items: list[dict]) -> list[dict]:
                 last["tool_calls"].append(call)
             else:
                 msgs.append({"role": "assistant", "content": None, "tool_calls": [call]})
+            if it.get("result") is not None:          # herramienta del SERVIDOR (8-nov): su resultado viaja en la llamada
+                msgs.append({"role": "tool", "tool_call_id": call["id"], "content": str(it["result"])})
         elif kind == "function_call_output":
             msgs.append({"role": "tool", "tool_call_id": it.get("callId"), "content": str(it.get("output") or "")})
     return msgs
@@ -212,58 +221,107 @@ def studio_turn(company_id: int, payload: StudioTurn, user: User = Depends(curre
         raise HTTPException(status_code=429, detail="ai_cap_reached")
 
     model = _model(payload.model)
-    body: dict[str, Any] = {"model": model, "messages": to_messages(payload.instructions, payload.input),
-                            "temperature": 0, "max_tokens": MAX_TOKENS}
-    if model.startswith("nvidia/"):                       # el razonamiento apagado (✅ así se usa Nemotron en todo ContaBu)
-        body["chat_template_kwargs"] = {"enable_thinking": False}
+    messages = to_messages(payload.instructions, payload.input)
     tools = to_tools(payload.tools)
-    if tools:
-        body["tools"] = tools
-        choice = to_tool_choice(payload.toolChoice)
-        if choice:
-            body["tool_choice"] = choice
-    started = time.monotonic()
-    try:
-        r = nemotron._post(body)
-    except nemotron.NemotronUnavailable:
-        raise HTTPException(status_code=503, detail="ai_unavailable")
-    except nemotron.NemotronError as e:
-        agent_calls.record(session, company, AGENT, None, outcome=e.code, user_id=user.id, model=model,
-                           latency_ms=int((time.monotonic() - started) * 1000))
-        session.commit()
-        raise HTTPException(status_code=502, detail="ai_failed")
-    if r.status_code >= 400:
-        agent_calls.record(session, company, AGENT, None, outcome=f"http_{r.status_code}", user_id=user.id,
-                           model=model, latency_ms=int((time.monotonic() - started) * 1000))
-        session.commit()
-        raise HTTPException(status_code=502, detail="ai_failed")
-    data = r.json()
-    usage = nemotron._usage_from(data, model, "tools", False, started)
-    message = ((data.get("choices") or [{}])[0].get("message")) or {}
-    output = to_output(message)
+    choice = to_tool_choice(payload.toolChoice)
+    lang = "es" if payload.lang.startswith("es") else "en"
+
+    # EL CICLO EN EL SERVIDOR (8-nov): si el modelo pide herramientas del SERVIDOR (SQL, `studio_tools`), este backend las
+    # ejecuta y vuelve a llamar al modelo, hasta que responda o pida una herramienta del navegador (las de AG Studio o abrir
+    # Cobros). Cada paso queda medido y registrado; el número de vueltas tiene tope aquí, no en el navegador.
+    output: list[dict] = []
+    steps: list[dict] = []
+    server_results: list[dict] = []
+    total = {"latency_ms": 0, "tokens": 0, "cost_usd": 0.0}
+    usage = None
+    data: dict = {}
+    for loop in range(MAX_SERVER_LOOPS):
+        body: dict[str, Any] = {"model": model, "messages": messages, "temperature": 0, "max_tokens": MAX_TOKENS}
+        if model.startswith("nvidia/"):                   # el razonamiento apagado (✅ así se usa Nemotron en todo ContaBu)
+            body["chat_template_kwargs"] = {"enable_thinking": False}
+        if tools:
+            body["tools"] = tools
+            if choice and loop == 0:
+                body["tool_choice"] = choice
+        started = time.monotonic()
+        try:
+            r = nemotron._post(body)
+        except nemotron.NemotronUnavailable:
+            raise HTTPException(status_code=503, detail="ai_unavailable")
+        except nemotron.NemotronError as e:
+            agent_calls.record(session, company, AGENT, None, outcome=e.code, user_id=user.id, model=model,
+                               latency_ms=int((time.monotonic() - started) * 1000))
+            session.commit()
+            raise HTTPException(status_code=502, detail="ai_failed")
+        if r.status_code >= 400:
+            agent_calls.record(session, company, AGENT, None, outcome=f"http_{r.status_code}", user_id=user.id,
+                               model=model, latency_ms=int((time.monotonic() - started) * 1000))
+            session.commit()
+            raise HTTPException(status_code=502, detail="ai_failed")
+        data = r.json()
+        usage = nemotron._usage_from(data, model, "tools", False, started)
+        message = ((data.get("choices") or [{}])[0].get("message")) or {}
+        turn_out = to_output(message)
+        calls = [o for o in turn_out if o["type"] == "function_call"]
+        agent_calls.record(session, company, AGENT, usage, user_id=user.id, items_out=len(turn_out), items_valid=len(calls),
+                           outcome="ok" if usage.finish_reason != "length" else "out_of_tokens")
+        tok = usage.prompt_tokens + usage.completion_tokens
+        total["latency_ms"] += usage.latency_ms
+        total["tokens"] += tok
+        total["cost_usd"] += usage.cost_usd or 0
+        steps.append({"kind": "model", "model": usage.model, "ms": usage.latency_ms, "tokens": tok, "cost_usd": usage.cost_usd,
+                      "tools": [c["name"] for c in calls]})
+        server_calls = [c for c in calls if c["name"] in studio_tools.SERVER_TOOLS]
+        if not server_calls:
+            output += turn_out
+            break
+        # Las herramientas del servidor: SQL aquí mismo. Su resultado va en la llamada (`result`), para el chat de AG Studio
+        # y para la revisión de cifras.
+        messages.append({"role": "assistant", "content": message.get("content"),
+                         "tool_calls": [{"id": c["callId"], "type": "function",
+                                         "function": {"name": c["name"], "arguments": c["arguments"]}} for c in server_calls]})
+        for c in server_calls:
+            t0 = time.monotonic()
+            result = json.dumps(studio_tools.SERVER_TOOLS[c["name"]](session, company))
+            ms = int((time.monotonic() - t0) * 1000)
+            c["result"] = result
+            # No va en `output`: con una llamada `server`, AG Studio le da un resultado de relleno y vuelve a llamar al modelo
+            # (✅ `executeToolCall.d.ts`). Se muestra en "Lo que hizo la IA" (`steps`) y cuenta para la revisión de cifras.
+            server_results.append(c)
+            messages.append({"role": "tool", "tool_call_id": c["callId"], "content": result})
+            steps.append({"kind": "sql", "tool": c["name"], "ms": ms})
+        client_calls = [c for c in calls if c["name"] not in studio_tools.SERVER_TOOLS]
+        if client_calls:                                   # lo del navegador lo ejecuta el navegador
+            output += client_calls
+            break
+    else:
+        output.append({"id": f"msg_{uuid.uuid4().hex[:12]}", "kind": "output", "type": "message", "role": "assistant",
+                       "status": "completed", "content": [{"type": "text", "text": _TOO_MANY[lang], "annotations": []}]})
+
     final = not any(o["type"] == "function_call" for o in output)
     unverified: list[str] = []
     if final:
         for o in output:
             if o["type"] == "message":
                 text = o["content"][0]["text"]
-                bad = unverified_amounts(text, payload.input)
+                bad = unverified_amounts(text, payload.input + server_results)
                 if bad:
                     unverified += bad
-                    lang = "es" if payload.lang.startswith("es") else "en"
                     o["content"][0]["text"] = _UNVERIFIED[lang].format(figures=", ".join(bad))
-    agent_calls.record(session, company, AGENT, usage, user_id=user.id, items_out=len(output),
-                       items_valid=sum(1 for o in output if o["type"] == "function_call"),
-                       outcome="unverified" if unverified else ("ok" if usage.finish_reason != "length" else "out_of_tokens"))
+        steps.append({"kind": "check", "figures": sum(len(amounts_in(o["content"][0]["text"])) for o in output
+                                                      if o["type"] == "message") if not unverified else 0,
+                      "unverified": unverified})
+        if unverified:
+            agent_calls.record(session, company, AGENT, None, outcome="unverified", user_id=user.id, model=model)
     session.commit()
+    length = bool(usage and usage.finish_reason == "length")
     return {
         "id": data.get("id") or f"resp_{uuid.uuid4().hex[:12]}", "createdAt": int(time.time() * 1000),
-        "status": "incomplete" if usage.finish_reason == "length" else "completed",
-        **({"incompleteDetails": {"reason": "max_output_tokens"}} if usage.finish_reason == "length" else {}),
-        "output": output, "model": usage.model,
-        # Lo medido de ESTE turno, para mostrarlo junto a la respuesta (como el panel "What the AI did").
-        "contabu": {"latency_ms": usage.latency_ms, "tokens": usage.prompt_tokens + usage.completion_tokens,
-                    "cost_usd": usage.cost_usd, "model": usage.model, "final": final,
-                    # Solo en la respuesta final: ¿el código encontró cada monto en lo que devolvieron las herramientas?
+        "status": "incomplete" if length else "completed",
+        **({"incompleteDetails": {"reason": "max_output_tokens"}} if length else {}),
+        "output": output, "model": model,
+        # Lo medido de ESTA llamada (todas sus vueltas), para "Lo que hizo la IA": cada paso con su tiempo.
+        "contabu": {"latency_ms": total["latency_ms"], "tokens": total["tokens"], "cost_usd": total["cost_usd"],
+                    "model": model, "final": final, "steps": steps,
                     "verified": (not unverified) if final else None, "unverified": unverified},
     }
