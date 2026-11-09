@@ -2223,10 +2223,11 @@
     "intro": {
       "kicker": "ContaBu + PayPal · sandbox",
       "title": "Administra tu negocio desde PayPal.",
-      "body": "Para este hackathon construimos el portal para el dueño de un small business, administrado por su bookkeeper, con PayPal en el centro: facturas que el cliente paga con tarjeta y que el dueño puede dictar desde el celular, pagos a contratistas con PayPal Payouts, y cada venta registrada por el bruto con su comisión aparte, sin contar nada dos veces. Lo hicimos con las APIs de PayPal y el PayPal Agent Toolkit, y con modelos de IA abiertos: el código revisa cada cifra y el dueño confirma antes de que se envíe nada. Queremos que PayPal se convierta en la cuenta principal de los pequeños negocios, donde cobran, facturan y pagan, mientras el bookkeeper lleva su contabilidad.",
+      "body": "Para este hackathon construimos el portal para el dueño de un pequeño negocio, administrado por su bookkeeper, con PayPal en el centro: facturas que el cliente paga con tarjeta y que el dueño puede dictar desde el celular, pagos a contratistas con PayPal Payouts, y cada venta registrada por el bruto con su comisión aparte, sin contar nada dos veces. Y un panel de análisis, hecho con AG Studio, donde el dueño ve de un vistazo quién le debe y cuánto está vencido, y le pregunta a un asistente de IA a quién cobrarle primero. Lo hicimos con las APIs de PayPal y el PayPal Agent Toolkit, y con modelos de IA abiertos: el código revisa cada cifra y el dueño confirma antes de que se envíe nada.",
       "sandbox": "Todo corre en el sandbox de PayPal. No se mueve dinero real.",
       "start": "Empezar la visita",
-      "live": "Probar con mi propio sandbox de PayPal"
+      "live": "Probar con mi propio sandbox de PayPal",
+      "mission": "Queremos que PayPal se convierta en la cuenta principal de los pequeños negocios, donde cobran, facturan y pagan, mientras el bookkeeper lleva su contabilidad."
     },
     "collect": {
       "open": "Cobrar",
