@@ -20,7 +20,10 @@ export default function PayPalIntro({ onStart, onSkip }: { onStart: () => void; 
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">{t("owner.intro.title")}</h1>
           </div>
           {/* 🔄 6-nov (Jose): un solo párrafo —qué construimos, cómo y para qué— en vez de las dos columnas "sin / con". */}
-          <p className="text-[15px] leading-relaxed text-slate-700 max-w-2xl mx-auto">{t("owner.intro.body")}</p>
+          {/* 8-nov (Jose): el párrafo abre con la idea de todo el proyecto, en negrilla. */}
+          <p className="text-[15px] leading-relaxed text-slate-700 max-w-2xl mx-auto">
+            <strong className="font-semibold text-slate-900">{t("owner.intro.mission")}</strong> {t("owner.intro.body")}
+          </p>
           <p className="text-xs text-center text-slate-500">{t("owner.intro.sandbox")}</p>
 
           <div className="flex flex-col-reverse sm:flex-row items-center justify-center gap-2">
