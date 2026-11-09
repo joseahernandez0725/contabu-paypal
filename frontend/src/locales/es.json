@@ -1759,7 +1759,7 @@
       "invoices": "Cobros",
       "settings": "Configuración",
       "contractors": "Contratistas",
-      "dashboard": "Tablero"
+      "dashboard": "Análisis"
     },
     "managedBy": "Contabilidad por {{name}}",
     "yourBookkeeper": "tu bookkeeper",
@@ -2544,7 +2544,7 @@
       "editHint": "Los pagos ya enviados conservan el correo al que se mandaron."
     },
     "dashboard": {
-      "intro": "Tus facturas, tus pagos a contratistas y los periodos que cerró tu bookkeeper, en un solo tablero. Toca una barra o una porción para filtrar el resto de la página.",
+      "intro": "Explora tus facturas, tus pagos a contratistas y tus periodos cerrados: toca un cliente, una barra o una porción para filtrar toda la página. El Resumen muestra tu año; aquí lo analizas.",
       "note": "Hecho con AG Studio. Las cifras salen de los cálculos de ContaBu (SQL); el tablero solo las suma y las agrupa.",
       "src": {
         "invoices": "Facturas",
@@ -2627,7 +2627,8 @@
           "checkBad": "El código no encontró {{figures}} en los datos: la respuesta se ocultó",
           "checkNone": "La respuesta no tiene cifras que revisar"
         },
-        "capReached": "Llegaste al límite de preguntas al asistente por hoy. El tablero sigue funcionando; puedes volver a preguntar mañana."
+        "capReached": "Llegaste al límite de preguntas al asistente por hoy. El tablero sigue funcionando; puedes volver a preguntar mañana.",
+        "welcome": "¡Hola! Leo este tablero y te ayudo a cobrar.\nPregúntame a quién recordarle primero, quiénes son tus mejores clientes o cuánto gastaste en un mes. Nunca envío nada y cada cifra sale de tus datos."
       },
       "owes": {
         "total": "{{amount}} por cobrar",

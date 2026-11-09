@@ -144,6 +144,8 @@ const FAILED = [
 ];
 const ALL_MODELS = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("ai") === "all-models";
 const MODELS = ALL_MODELS ? [...PASSED, ...FAILED] : PASSED;
+/** El nombre corto de un modelo para la pantalla ("Qwen3 235B", no "Qwen/Qwen3-235B-A22B-Instruct-2507"). */
+export const modelLabel = (id: string) => [...PASSED, ...FAILED].find((m) => m.id === id || m.id.endsWith(`/${id}`))?.label ?? id.split("/").pop() ?? id;
 
 /** Descripciones cortas de las herramientas de AG Studio (8-nov): las originales son largas y un modelo se pierde. */
 export const STUDIO_AI_TEXT = {

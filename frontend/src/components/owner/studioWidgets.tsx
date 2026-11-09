@@ -166,8 +166,8 @@ function Kpi(params: any) {
       <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${TONE[tone]}`}>{ic(cfg.icon)}</span>
       <div className="min-w-0">
         <div className={`text-xl font-semibold tabular-nums leading-tight ${tone === "bad" ? "text-rose-700" : "text-slate-900"}`}>{usd(shown, i18n.language)}</div>
-        <div className="truncate text-xs text-slate-500">{t(`owner.dashboard.w.${cfg.label}`)}</div>
-        {hint && <div className={`truncate text-[11px] ${tone === "bad" ? "text-rose-700" : tone === "warn" ? "text-amber-700" : "text-emerald-700"}`}>{t(`owner.dashboard.kpi.${hint}`)}</div>}
+        <div className="line-clamp-2 text-xs leading-tight text-slate-500">{t(`owner.dashboard.w.${cfg.label}`)}</div>
+        {hint && <div className={`line-clamp-1 text-[11px] ${tone === "bad" ? "text-rose-700" : tone === "warn" ? "text-amber-700" : "text-emerald-700"}`}>{t(`owner.dashboard.kpi.${hint}`)}</div>}
       </div>
     </div>
   );

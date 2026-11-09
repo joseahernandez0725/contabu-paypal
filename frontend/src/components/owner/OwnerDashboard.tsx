@@ -5,7 +5,7 @@ import { AgStudioAiModule, studioTheme, type AgReportState, type AgResponsiveLay
 import { AG_STUDIO_LOCALE_ES_ES } from "ag-studio-locale";
 import { getContractors, getInvoices, type ContractorPayment, type OwnerHome, type OwnerInvoice, type StudioStep, type StudioTurnCost } from "../../api";
 import { inTour } from "../../demo";
-import { collectionsAssistant, STUDIO_AI_TEXT, toolDisplay } from "./studioAssistant";
+import { collectionsAssistant, modelLabel, STUDIO_AI_TEXT, toolDisplay } from "./studioAssistant";
 import { contabuWidgets } from "./studioWidgets";
 import AiTrace, { type TraceStep } from "./AiTrace";
 
@@ -49,6 +49,7 @@ const RESPONSIVE: AgResponsiveLayoutBreakpoint[] = [{
   },
 }];
 const NARROW = typeof window !== "undefined" && window.innerWidth < 640;
+const MOBILE_TRACKS = 3 + 5 * 4 + 4 * 13;   // en el celular, uno debajo del otro (sin la tabla, que se suma aparte)
 
 const PAID = new Set(["PAID", "MARKED_AS_PAID", "PAID_EXTERNAL"]);
 const REFUNDED = new Set(["REFUNDED", "PARTIALLY_REFUNDED", "MARKED_AS_REFUNDED", "REFUNDED_EXTERNAL"]);
@@ -75,6 +76,19 @@ const yearOf = (ym: string | null) => (ym ? Number(ym.slice(0, 4)) : null);
 const monthLabelOf = (ym: string) => new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1, 1)
   .toLocaleDateString(document.documentElement.lang?.startsWith("es") ? "es-US" : "en-US", { month: "short", year: "numeric" });
 const monthStart = (ym: string) => new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1, 1);   // 8-nov: el mes como fecha
+
+// 8-nov (revisión como cliente): AG Studio no tiene opción para estas tres cosas, así que van en CSS sobre sus clases.
+// - Un saludo en el chat vacío (antes: un panel en blanco). - Sin el selector de conversaciones viejas (sobraba; "Nuevo"
+//   se queda). - El encabezado del panel no lo pliega (plegado, el chat desaparecía sin una forma clara de abrirlo).
+const STUDIO_CSS = `
+.contabu-studio .ag-studio-ai-message-container:empty::before {
+  content: var(--contabu-welcome); display: block; margin: 12px; padding: 12px 14px; border-radius: 12px;
+  background: #F1F5F9; color: #334155; font-size: 13px; line-height: 1.45; white-space: pre-line;
+}
+.contabu-studio .ag-studio-ai-thread-button { visibility: hidden; }
+.contabu-studio .ag-studio-button-filter-widget .ag-studio-filter-widget-title { display: none; }
+.contabu-studio .ag-studio-ai-panel > .ag-studio-panel-header { pointer-events: none; }
+`;
 
 export default function OwnerDashboard({ home }: { home: OwnerHome }) {
   const { t, i18n } = useTranslation();
@@ -137,7 +151,11 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
       };
     });
     const closed = [...home.closed_months].sort((a, b) => a.month.localeCompare(b.month));
-    const catLabel = (c: string) => t(`cat.${c}`, { defaultValue: c });
+    // 8-nov (revisión como cliente): los nombres largos se cortaban en el eje; en el gráfico va la parte antes del guion.
+    const catLabel = (c: string) => {
+      const full = t(`cat.${c}`, { defaultValue: c });
+      return full.length > 24 ? full.split(/ [—–-] /)[0] : full;
+    };
     // 8-nov (revisión como cliente): "Returns and allowances" salía en "Mayores costos" (con $0), porque la tabla de libros
     // también tiene las filas de ingresos. Los costos van en su propia tabla, solo con las filas de costos.
     const spend = closed.flatMap((m) => m.out.map((c) => ({ month: m.month, category: c.category, category_label: catLabel(c.category), costs: num(c.amount) })));
@@ -216,6 +234,8 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
     };
   }, [invoices, payments, home, t, es]);
 
+  const LIST_TRACKS = Math.min(20, Math.max(8, Math.ceil(((invoices?.filter((i) => i.status !== "DRAFT").length ?? 8) + 2) * 28 / 22) + 1));
+  const TRACKS = 33 + LIST_TRACKS;
   // El tablero ya armado (el dueño no tiene que construir nada); en modo vista: filtra y cruza, no edita.
   // 8-nov (rediseño, revisión de Jose como usuario externo): arriba lo que necesita atención ("Quién me debe" y los
   // indicadores con color), luego la historia (ingresos contra costos, costos por categoría, cobrado por mes) y al final la
@@ -225,7 +245,9 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
     const kpi = (field: string) => ({ type: "contabu-kpi", dataMapping: { value: [{ id: field, aggregation: "sum" }] } });
     const chart = (key: string, extra: object = {}) => ({
       ...titled(key),
-      style: { theme: { common: { legend: { enabled: true, position: "bottom" } } } },
+      // 8-nov: AG Studio no deja dar formato a los números del eje ("20K"): el eje dice en qué moneda está.
+      style: { theme: { common: { legend: { enabled: true, position: "bottom" } } },
+               custom: { valueAxis: { title: { enabled: true, text: "USD", fontSize: 11, color: "#64748B" } } } },
       ...extra,
     });
     return {
@@ -233,7 +255,12 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
         id: "collections",
         layout: { minWidth: 320, rowHeight: 22 },   // sin minWidth el lienzo mide 720 px y en el celular se sale
         widgets: {
-          customers: { type: "button-filter", dataMapping: { value: [{ id: "invoices.customer" }] }, format: titled("filterCustomers") },
+          // 8-nov (revisión como cliente): sin título ni "Filtrar por: Cliente" (los nombres ya dicen qué son), botones redondos.
+          customers: { type: "button-filter", dataMapping: { value: [{ id: "invoices.customer" }] },
+                       format: { title: { enabled: false }, subtitle: { enabled: false }, caption: { enabled: false },
+                                 style: { selection: { type: "single" }, dimensions: { height: 34 },
+                                          defaultItem: { backgroundColor: "#FFFFFF", borderEnabled: true, borderColor: "#CBD5E1", borderRadius: 999, color: "#334155" },
+                                          activeItem: { backgroundColor: "#0070BA", color: "#FFFFFF", borderColor: "#0070BA" } } } },
           collected: kpi("invoices.collected"),
           open: kpi("invoices.open"),
           overdue: kpi("invoices.overdue"),
@@ -271,23 +298,24 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
           },
         },
         widgetLayout: {
-          customers: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 6 },
-          collected: { xTrack: 0, yTrack: 6, xSpan: 5, ySpan: 4 },
-          open: { xTrack: 5, yTrack: 6, xSpan: 5, ySpan: 4 },
-          overdue: { xTrack: 10, yTrack: 6, xSpan: 5, ySpan: 4 },
-          contractors: { xTrack: 15, yTrack: 6, xSpan: 5, ySpan: 4 },
-          pending: { xTrack: 20, yTrack: 6, xSpan: 4, ySpan: 4 },
-          whoOwes: { xTrack: 0, yTrack: 10, xSpan: 9, ySpan: 13 },
-          months: { xTrack: 9, yTrack: 10, xSpan: 15, ySpan: 13 },
-          costs: { xTrack: 0, yTrack: 23, xSpan: 12, ySpan: 13 },
-          byCustomer: { xTrack: 12, yTrack: 23, xSpan: 12, ySpan: 13 },
-          list: { xTrack: 0, yTrack: 36, xSpan: 24, ySpan: 13 },
+          customers: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 3 },   // sin "Filtrar por" caben en 3 pistas
+          collected: { xTrack: 0, yTrack: 3, xSpan: 5, ySpan: 4 },
+          open: { xTrack: 5, yTrack: 3, xSpan: 5, ySpan: 4 },
+          overdue: { xTrack: 10, yTrack: 3, xSpan: 5, ySpan: 4 },
+          contractors: { xTrack: 15, yTrack: 3, xSpan: 5, ySpan: 4 },
+          pending: { xTrack: 20, yTrack: 3, xSpan: 4, ySpan: 4 },
+          whoOwes: { xTrack: 0, yTrack: 7, xSpan: 9, ySpan: 13 },
+          months: { xTrack: 9, yTrack: 7, xSpan: 15, ySpan: 13 },
+          costs: { xTrack: 0, yTrack: 20, xSpan: 12, ySpan: 13 },
+          byCustomer: { xTrack: 12, yTrack: 20, xSpan: 12, ySpan: 13 },
+          list: { xTrack: 0, yTrack: 33, xSpan: 24, ySpan: LIST_TRACKS },
         },
       }],
       selectedPageId: "collections",
-      panels: { filters: { collapsed: true } },
+      // 8-nov: el chat siempre abierto (plegado, el dueño lo perdía: no se ve dónde se vuelve a abrir).
+      panels: { filters: { collapsed: true }, ai: { collapsed: false } },
     } as unknown as AgReportState;
-  }, [t]);
+  }, [t, LIST_TRACKS]);
   const widgets = useMemo(() => contabuWidgets(), [es]);   // los nombres del menú de edición, en el idioma de la pantalla
   // 8-nov: sin "(sum)" / "(suma)" en las leyendas y los tooltips: todas las cifras del tablero son sumas.
   const localeText = useMemo(() => ({ ...(es ? AG_STUDIO_LOCALE_ES_ES : {}), aggregationSumFieldName: "${name}",
@@ -307,23 +335,13 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
         )}
       </div>
       {asking && <p className="text-[11px] text-slate-500">{t("owner.dashboard.ai.rules")}</p>}
-      {/* `key`: AG Studio fija el idioma al crearse; al cambiarlo se vuelve a crear. El chat de AG Studio solo existe en
-          el modo de edición: con el asistente abierto se pasa a ese modo, pero solo con el panel del chat. */}
-      <div className="overflow-hidden" style={{ height: NARROW ? 2200 : asking ? "calc(100vh - 9rem)" : 49 * 22 + 150, minHeight: 560 }}>
-        <AgStudioProvider licenseKey={LICENSE} modules={[AgStudioAiModule]}>
-          <AgStudio key={es ? "es" : "en"} data={data as never} initialState={initialState} mode={asking ? "edit" : "view"} theme={theme} widgets={widgets}
-                    localeText={localeText} ai={canAsk ? ai : undefined} aiText={STUDIO_AI_TEXT} aiToolDisplay={tools}
-                    responsiveLayoutBreakpoints={RESPONSIVE}
-                    panels={{ edit: { left: [], right: ["ai"] }, view: { left: [], right: [] } }}
-                    style={{ height: "100%", width: "100%" }} />
-        </AgStudioProvider>
-      </div>
+      {/* 8-nov (revisión como cliente): antes quedaba al fondo de la página, lejos del chat; ahora arriba, sobre el chat. */}
       {last && (
-        <div className="max-w-xl">
-          <AiTrace ai={{ model: last.model, latency_ms: last.ms, tokens: last.tokens, cost_usd: last.usd }}
+        <div className="ml-auto w-full max-w-sm">
+          <AiTrace ai={{ model: modelLabel(last.model), latency_ms: last.ms, tokens: last.tokens, cost_usd: last.usd }}
                    steps={last.steps.map((x): TraceStep =>
                      x.kind === "model"
-                       ? { label: t("owner.dashboard.ai.step.model", { model: x.model.split("/").pop(), s: (x.ms / 1000).toFixed(1) }),
+                       ? { label: t("owner.dashboard.ai.step.model", { model: modelLabel(x.model), s: (x.ms / 1000).toFixed(1) }),
                            detail: x.tools.length ? t("owner.dashboard.ai.step.asked", { tools: x.tools.map((n) => toolName(n)).join(", ") })
                                                   : t("owner.dashboard.ai.step.wrote") }
                        : x.kind === "sql"
@@ -334,6 +352,19 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
                                        : { label: t("owner.dashboard.ai.step.checkNone") })} />
         </div>
       )}
+
+      {/* `key`: AG Studio fija el idioma al crearse; al cambiarlo se vuelve a crear. El chat de AG Studio solo existe en
+          el modo de edición: con el asistente abierto se pasa a ese modo, pero solo con el panel del chat. */}
+      <style>{STUDIO_CSS}</style>
+      <div className="contabu-studio overflow-hidden" style={{ ["--contabu-welcome" as string]: JSON.stringify(t("owner.dashboard.ai.welcome")).replace(/\\n/g, "\\A "), height: NARROW ? MOBILE_TRACKS * 22 + 60 + LIST_TRACKS * 22 : asking ? "calc(100vh - 9rem)" : TRACKS * 22 + 90, minHeight: 560 }}>
+        <AgStudioProvider licenseKey={LICENSE} modules={[AgStudioAiModule]}>
+          <AgStudio key={es ? "es" : "en"} data={data as never} initialState={initialState} mode={asking ? "edit" : "view"} theme={theme} widgets={widgets}
+                    localeText={localeText} ai={canAsk ? ai : undefined} aiText={STUDIO_AI_TEXT} aiToolDisplay={tools}
+                    responsiveLayoutBreakpoints={RESPONSIVE}
+                    panels={{ edit: { left: [], right: ["ai"] }, view: { left: [], right: [] } }}
+                    style={{ height: "100%", width: "100%" }} />
+        </AgStudioProvider>
+      </div>
       <p className="text-[11px] text-slate-400">{t("owner.dashboard.note")}</p>
     </div>
   );
