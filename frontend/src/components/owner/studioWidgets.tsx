@@ -80,7 +80,7 @@ function WhoOwes(params: any) {
     if (f) params.widgetApi.toggleCrossFilter({ type: "value", field: f, value: customer, group: 0 });
   };
   return (
-    <div className="h-full flex flex-col p-3 font-sans">
+    <div data-tour="pp-owes" className="h-full flex flex-col p-3 font-sans">
       <div className="flex items-baseline gap-2">
         <h3 className="text-sm font-semibold text-slate-900">{t("owner.dashboard.w.whoOwes")}</h3>
         {owing.length > 0 && <span className="text-xs text-slate-500">{t("owner.dashboard.owes.total", { amount: usd(total, i18n.language) })}</span>}

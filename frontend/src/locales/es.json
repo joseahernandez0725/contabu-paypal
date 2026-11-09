@@ -2205,6 +2205,19 @@
       "live": {
         "t": "Eso es todo",
         "b": "Todo esto corre en el sandbox de PayPal: no se mueve dinero real. Entra con Google y el código de acceso para tener tu propia contabilidad, conectar tu propia app de sandbox de PayPal y enviar facturas de sandbox reales."
+      },
+      "insights": {
+        "t": "Análisis: quién te debe, de un vistazo",
+        "b": "Un tablero de AG Studio con las facturas del dueño, los pagos a contratistas y los periodos cerrados. \"Quién me debe\" es un widget propio: lo que debe cada cliente, la parte vencida y los días de atraso. Al tocar un cliente se filtra toda la página; Recordar abre Cobros."
+      },
+      "insightsAi": {
+        "t": "Lo que hizo el asistente",
+        "b": "El botón redondo de abajo a la derecha abre un asistente construido sobre el Agent Framework de AG Studio. Esta es una respuesta real y medida; la visita no llama a la IA.",
+        "s1": "Un modelo de IA abierto leyó la pregunta: \"¿A quién le recuerdo primero que me pague, y con qué tono?\"",
+        "s1d": "Pidió la lista de clientes por recordar, ordenada por el código de ContaBu según el historial de pago de cada uno",
+        "s2": "Redactó la respuesta a partir de esa lista",
+        "s2d": "La respuesta nombró primero al cliente con la factura vencida y sugirió un tono amable",
+        "s3": "El código de ContaBu revisó las 2 cifras de la respuesta contra los datos antes de mostrarla"
       }
     },
     "intro": {

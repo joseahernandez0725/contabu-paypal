@@ -2075,6 +2075,19 @@
       "live": {
         "t": "That's the tour",
         "b": "All of this runs in PayPal's sandbox: no real money moves. Sign in with Google and the access code to get your own book, connect your own PayPal sandbox app and send real sandbox invoices."
+      },
+      "insights": {
+        "t": "Insights: who owes you, at a glance",
+        "b": "An AG Studio dashboard over the owner's invoices, contractor payments and closed periods. \"Who owes me\" is our own widget: what each customer owes, the overdue part and the days late. Tap a customer and the whole page filters; Remind opens Invoices."
+      },
+      "insightsAi": {
+        "t": "What the assistant did",
+        "b": "The round button at the bottom right opens an assistant built on AG Studio's Agent Framework. This is one real, measured answer; the tour does not call the AI.",
+        "s1": "An open AI model read the question: \"Who should I remind first, and in what tone?\"",
+        "s1d": "It asked for the list of customers to remind, ordered by ContaBu's code from each customer's payment history",
+        "s2": "It wrote the answer from that list",
+        "s2d": "The answer named the customer with the overdue invoice first and suggested a friendly tone",
+        "s3": "ContaBu's code checked the answer's 2 figures against the data before showing it"
       }
     },
     "intro": {

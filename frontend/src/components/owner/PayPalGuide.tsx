@@ -38,6 +38,9 @@ const STOPS: Stop[] = [
   { key: "paid", owner: "invoices", sel: '[data-tour="pp-paid-invoice"]' },
   { key: "newInvoice", owner: "invoices", sel: '[data-tour="pp-new-invoice"]' },
   { key: "ai" },
+  // 8-nov (Jose): el panel Análisis (AG Studio) y una respuesta medida de su asistente (la visita no llama a la IA).
+  { key: "insights", owner: "dashboard", sel: '[data-tour="pp-owes"]' },
+  { key: "insightsAi" },
   { key: "contractors", owner: "contractors", sel: '[data-tour="pp-contractors"]' },
   { key: "paypal", owner: "accounts", sel: '[data-tour="pp-paypal-card"]' },
   { key: "bank", console: "upload", sel: '[data-tour="pp-bank"]' },
@@ -52,6 +55,9 @@ const STOPS: Stop[] = [
 // Una corrida REAL del dictado (6-nov, Nemotron 3 Nano: 5 dictados entre 0.6 y 1.3 s, mediana 0.9 s; 543–593 tokens;
 // $0.00004–0.00005). La visita no llama a la IA: muestra esta, con el mismo panel que ve el dueño en su libro.
 const SAMPLE_AI = { model: "open model", latency_ms: 945, tokens: 587, cost_usd: 0.000045 };
+// Una respuesta REAL del asistente del panel Análisis (8-nov, "¿A quién le recuerdo primero?"): 4.1 s, 25.304 tokens,
+// $0.00510; el modelo pidió la lista ordenada por el código (2.4 s), redactó (1.7 s) y el código revisó sus 2 cifras.
+const SAMPLE_INSIGHTS = { model: "open model", latency_ms: 4100, tokens: 25304, cost_usd: 0.0051 };
 
 let introShownThisLoad = false;   // en la visita: la bienvenida sale una vez por carga (todos los jueces empiezan igual)
 
@@ -147,6 +153,13 @@ export default function PayPalGuide({ goOwner, goConsole }: {
             { label: t("owner.guide.ai.s2"), detail: t("owner.guide.ai.s2d") },
             { label: t("owner.guide.ai.s3") },
             { label: t("owner.guide.ai.s4"), tone: "wait" },
+          ]} />
+        )}
+        {s.key === "insightsAi" && (
+          <AiTrace ai={SAMPLE_INSIGHTS} steps={[
+            { label: t("owner.guide.insightsAi.s1"), detail: t("owner.guide.insightsAi.s1d") },
+            { label: t("owner.guide.insightsAi.s2"), detail: t("owner.guide.insightsAi.s2d") },
+            { label: t("owner.guide.insightsAi.s3") },
           ]} />
         )}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2 pt-1">
