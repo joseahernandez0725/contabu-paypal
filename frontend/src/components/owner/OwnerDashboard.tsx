@@ -103,11 +103,19 @@ const STUDIO_CSS = `
 @media (max-width: 640px) {
   .contabu-studio.asking .ag-studio-root-panel-container-right { right: 12px; bottom: 84px; height: min(520px, calc(100vh - 140px)); }
 }
-/* "Lo que hizo la IA": en pantallas anchas, a la izquierda del chat; en el celular, en la página. */
+/* "Lo que hizo la IA" flota siempre, fuera de la página (8-nov: en pantallas angostas iba en la página, encima del tablero,
+   y al aparecer o al cerrar el chat empujaba todo: el "salto" que vio Jose). Ancho: a la izquierda del chat; angosto: encima. */
+.contabu-trace { position: fixed; z-index: 60; overflow: auto; border-radius: 12px; background: #FFFFFF;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, .18); }
 @media (min-width: 900px) {
-  .contabu-trace { position: fixed; right: 412px; bottom: 88px; z-index: 60; width: 320px;
-    max-height: min(560px, calc(100vh - 150px)); overflow: auto; border-radius: 12px; background: #FFFFFF;
-    box-shadow: 0 16px 48px rgba(15, 23, 42, .18); }
+  .contabu-trace { right: 412px; bottom: 88px; width: 320px; max-height: min(560px, calc(100vh - 150px)); }
+}
+@media (max-width: 899px) {
+  .contabu-trace { right: 20px; width: min(380px, calc(100vw - 24px)); max-height: 22vh;
+    bottom: calc(88px + min(560px, calc(100vh - 150px)) + 8px); }
+}
+@media (max-width: 640px) {
+  .contabu-trace { right: 12px; bottom: calc(84px + min(520px, calc(100vh - 140px)) + 8px); }
 }
 `;
 
@@ -384,7 +392,7 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
       <p className="text-sm text-slate-600">{t("owner.dashboard.intro")}</p>
       {/* 8-nov (revisión como cliente): antes quedaba al fondo de la página, lejos del chat; ahora arriba, sobre el chat. */}
       {asking && last && (
-        <div className="contabu-trace ml-auto w-full max-w-sm">
+        <div className="contabu-trace">
           <AiTrace ai={{ model: modelLabel(last.model), latency_ms: last.ms, tokens: last.tokens, cost_usd: last.usd }}
                    steps={last.steps.map((x): TraceStep =>
                      x.kind === "model"
