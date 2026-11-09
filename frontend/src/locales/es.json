@@ -2212,7 +2212,7 @@
       },
       "insightsAi": {
         "t": "Lo que hizo el asistente",
-        "b": "El botón redondo de abajo a la derecha abre un asistente construido sobre el Agent Framework de AG Studio. Esta es una respuesta real y medida; la visita no llama a la IA.",
+        "b": "Este botón abre un asistente construido sobre el Agent Framework de AG Studio. Esta es una respuesta real y medida; la visita no llama a la IA.",
         "s1": "Un modelo de IA abierto leyó la pregunta: \"¿A quién le recuerdo primero que me pague, y con qué tono?\"",
         "s1d": "Pidió la lista de clientes por recordar, ordenada por el código de ContaBu según el historial de pago de cada uno",
         "s2": "Redactó la respuesta a partir de esa lista",
@@ -2664,7 +2664,8 @@
         "placeholder": "Pregunta por tus facturas, clientes o meses…",
         "model": "Modelo",
         "stop": "Detener",
-        "send": "Enviar"
+        "send": "Enviar",
+        "tourOnly": "En la visita no corre la IA. Para preguntarle al asistente, entra con Google y el código de acceso: ahí usas tu propio libro."
       },
       "owes": {
         "total": "{{amount}} por cobrar",

@@ -112,6 +112,10 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
   const [error, setError] = useState(false);
   // El asistente (Agent Framework): solo el dueño en su libro; ni la vista previa del bookkeeper ni la visita (sin IA).
   const canAsk = !home.preview && !inTour();
+  // 8-nov (Jose): en la visita el botón también se ve, para que la parada del asistente lo señale; ahí no hay IA, así que al
+  // tocarlo solo dice dónde se prueba.
+  const showFab = canAsk || inTour();
+  const [tourNote, setTourNote] = useState(false);
   const [asking, setAsking] = useState(false);
   // Por cada respuesta (8-nov): se acumulan sus turnos hasta el final y se muestra el resumen, con la revisión de cifras.
   type Answer = { turns: number; ms: number; tokens: number; usd: number; model: string; verified: boolean | null; steps: StudioStep[] };
@@ -391,8 +395,13 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
       <p className="text-[11px] text-slate-400">{t("owner.dashboard.note")}</p>
       {/* Se oculta al cerrarlo, no se desmonta: la conversación sigue ahí al volver a abrirlo. */}
       {canAsk && <OwnerChat open={asking} harness={harness} starters={starters} toolName={toolName} onClose={() => setAsking(false)} />}
-      {canAsk && (
-        <button onClick={() => setAsking((a) => !a)} aria-expanded={asking}
+      {showFab && !canAsk && tourNote && (
+        <div role="status" className="fixed bottom-24 right-5 z-[61] max-w-xs rounded-xl bg-white p-3 text-sm text-slate-700 shadow-lg ring-1 ring-slate-900/10">
+          {t("owner.dashboard.ai.tourOnly")}
+        </div>
+      )}
+      {showFab && (
+        <button data-tour="pp-assistant" onClick={() => (canAsk ? setAsking((a) => !a) : setTourNote((x) => !x))} aria-expanded={asking}
                 aria-label={asking ? t("owner.dashboard.ai.close") : t("owner.dashboard.ai.open")}
                 title={asking ? t("owner.dashboard.ai.close") : t("owner.dashboard.ai.open")}
                 className={`fixed bottom-5 right-5 z-[61] flex h-14 items-center gap-2 rounded-full shadow-lg transition-all

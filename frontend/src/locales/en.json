@@ -2082,7 +2082,7 @@
       },
       "insightsAi": {
         "t": "What the assistant did",
-        "b": "The round button at the bottom right opens an assistant built on AG Studio's Agent Framework. This is one real, measured answer; the tour does not call the AI.",
+        "b": "This button opens an assistant built on AG Studio's Agent Framework. This is one real, measured answer; the tour does not call the AI.",
         "s1": "An open AI model read the question: \"Who should I remind first, and in what tone?\"",
         "s1d": "It asked for the list of customers to remind, ordered by ContaBu's code from each customer's payment history",
         "s2": "It wrote the answer from that list",
@@ -2093,10 +2093,11 @@
     "intro": {
       "kicker": "ContaBu + PayPal · sandbox",
       "title": "Run your business from PayPal.",
-      "body": "For this hackathon we built a portal for small-business owners, managed by their bookkeeper, with PayPal at its center: invoices that customers pay by card and that the owner can dictate from a phone, contractor payments with PayPal Payouts, and every sale booked at gross with its fee apart, with nothing counted twice. We built it on PayPal's APIs and the PayPal Agent Toolkit, with open AI models: the code checks every figure, and the owner confirms before anything is sent. We want PayPal to become the main account of small businesses, where they get paid, invoice and pay, while the bookkeeper keeps their books.",
+      "body": "For this hackathon we built a portal for small-business owners, managed by their bookkeeper, with PayPal at its center: invoices that customers pay by card and that the owner can dictate from a phone, contractor payments with PayPal Payouts, and every sale booked at gross with its fee apart, with nothing counted twice. And an Insights dashboard, built with AG Studio, where the owner sees at a glance who owes them and what is overdue, and asks an AI assistant who to collect from first. We built it on PayPal's APIs and the PayPal Agent Toolkit, with open AI models: the code checks every figure, and the owner confirms before anything is sent.",
       "sandbox": "Everything runs in PayPal's sandbox. No real money moves.",
       "start": "Start the tour",
-      "live": "Try it with my own PayPal sandbox"
+      "live": "Try it with my own PayPal sandbox",
+      "mission": "We want PayPal to become the main account of small businesses, where they get paid, invoice and pay, while the bookkeeper keeps their books."
     },
     "collect": {
       "open": "Collect",
@@ -2533,7 +2534,8 @@
         "placeholder": "Ask about your invoices, customers or months…",
         "model": "Model",
         "stop": "Stop",
-        "send": "Send"
+        "send": "Send",
+        "tourOnly": "The tour does not run the AI. To ask the assistant, sign in with Google and the access code: you get your own book."
       },
       "owes": {
         "total": "{{amount}} to collect",

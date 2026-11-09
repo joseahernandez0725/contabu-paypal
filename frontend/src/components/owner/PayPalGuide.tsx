@@ -40,7 +40,7 @@ const STOPS: Stop[] = [
   { key: "ai" },
   // 8-nov (Jose): el panel Análisis (AG Studio) y una respuesta medida de su asistente (la visita no llama a la IA).
   { key: "insights", owner: "dashboard", sel: '[data-tour="pp-owes"]' },
-  { key: "insightsAi" },
+  { key: "insightsAi", owner: "dashboard", sel: '[data-tour="pp-assistant"]' },
   { key: "contractors", owner: "contractors", sel: '[data-tour="pp-contractors"]' },
   { key: "paypal", owner: "accounts", sel: '[data-tour="pp-paypal-card"]' },
   { key: "bank", console: "upload", sel: '[data-tour="pp-bank"]' },
