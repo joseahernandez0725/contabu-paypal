@@ -33,6 +33,13 @@ _MODEL_AGENTS = ("drafter", "reviewer", "note_checker", "personal_judge", "web_c
                  "invoice_voice", "invoice_reminder", "dispute_summary")   # FASE 16: voz, recordatorios, disputas; mismo tope
 
 
+# 8-nov: el asistente del Tablero (AG Studio, `studio_ai.py`) tiene tope PROPIO: guarda una fila por cada vuelta de su
+# ciclo (hasta 4) y otra si una cifra no se verifica, o sea 2–5 filas por pregunta. Contado con los demás, el dueño del
+# demo se quedaba sin IA a la cuarta pregunta y además sin dictado ni recordatorios. 60 filas ≈ 15–30 preguntas al día.
+STUDIO_AGENT = "studio_assistant"
+STUDIO_DAILY_ROWS = int(os.getenv("STUDIO_DAILY_ROWS") or (60 if _DEMO else 300))
+
+
 class CapReached(RuntimeError):
     code = "agent_cap_reached"
 
@@ -87,6 +94,10 @@ def check_cap(session: Session, company: Company, agent: Optional[str] = None) -
     """Antes de llamar: ¿la oficina todavía tiene llamadas (o búsquedas, `agent="verifier"`) hoy?"""
     import demo
     demo.check_global_cap(session, agent)   # FASE 13 (Firm, 23-oct): y el demo entero (no hace nada fuera)
+    if agent == STUDIO_AGENT:
+        if calls_last_24h(session, company, (STUDIO_AGENT,)) >= STUDIO_DAILY_ROWS:
+            raise CapReached(f"{STUDIO_DAILY_ROWS} filas del asistente en 24 h")
+        return
     if agent == "verifier":
         if calls_last_24h(session, company, ("verifier",)) >= DAILY_SEARCH_CAP:
             raise CapReached(f"{DAILY_SEARCH_CAP} búsquedas en 24 h")

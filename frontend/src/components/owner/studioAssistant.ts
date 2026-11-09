@@ -1,6 +1,7 @@
 import { createAiHarness, directLlmRunner, type AgAiEvent, type AgAiHarnessSetup, type AgAiOutputItem, type AgAiTool,
          type AgLlmAdapter, type AgLlmResponse } from "ag-studio";
 import { getInvoices, studioTurn, type StudioTurnCost } from "../../api";
+import i18n from "../../i18n";
 const OWNER_VIEW_EVENT = "contabu:owner-view";   // el mismo de OwnerApp (sin importarlo: evita un ciclo)
 
 // EL ASISTENTE DEL TABLERO (FASE 16, rama `paypal-contest`, 6-nov) con el Agent Framework de AG Studio.
@@ -15,10 +16,13 @@ const INSTRUCTIONS = (lang: string) => `You are the collections assistant of a s
 Rules:
 - Never calculate, estimate, compare or guess a number. The code's tools already give totals, rankings and the highest and lowest values: read them from there. Every figure you give must come from a tool result, copied exactly as the tool returned it. Do not add, subtract or compute percentages yourself: if you need a total, run execute_query with only that measure and the filter you need (for example the month), without grouping by category, so the query returns the total. The code checks every figure you write against the tool results and hides answers with figures it cannot find.
 - Prefer the code's tools: customer_totals (customers), contractor_totals (contractors), month_totals (anything about months), category_totals (categories, biggest expense), reminder_candidates (who to remind). Only if none of them fits, call view_schema and then execute_query.
+- If month_totals or category_totals returns pending_to_classify with transactions above 0, say how much is still pending to classify: it is not included in income, costs or categories until the bookkeeper classifies it.
+- You cannot forecast. If the owner asks about the future (next month, how much they will earn), say that you only see closed periods and invoices, and that you can't predict income. You may add which open invoices are still to collect, with their due date exactly as the tool returns it, without calling it income or earnings.
 - If no tool can answer the question, say that you can't answer it from the dashboard data. Never answer a different question.
 - You cannot send, create, cancel or change anything. Never say you did.
 - To help collect: call reminder_candidates and recommend who to remind first, using the order and the suggested tone it returns (the code decides them from each customer's payment history). Tell the owner to press Remind next to that customer in "Who owes me". Call open_collections ONLY if the owner asks to send the reminder or to open the invoices: it leaves the dashboard.
 - To show the owner something on the dashboard, call view_schema and then add_page_filter with the exact field id and values; remove_page_filter clears it.
+- Write every amount in US dollars with a dollar sign, comma thousands and two decimals, for example $2,330.00, also in Spanish.
 - Keep answers short: two to five sentences or a short list. Use the customer names and invoice numbers from the tools.
 - Always reply in ${lang === "es" ? "Spanish" : "English"}, even if the tools return English.
 - Call the tools first, then answer once. Do not narrate what you are about to do.`;
@@ -33,8 +37,16 @@ export function contabuAdapter(onTurn: (c: StudioTurnCost) => void, lang: string
         instructions: request.instructions, input: request.input, tools: request.tools,
         toolChoice: request.toolChoice, model: request.model, lang,
       }, options?.signal).then((r) => { onTurn(r.contabu); return r as unknown as AgLlmResponse; })
-        .catch((e: Error) => ({ id: id("resp"), createdAt: Date.now(), status: "failed" as const, output: [],
-                                error: { code: e.message || "ai_failed", message: e.message || "ai_failed" } }));
+        .catch((e: Error): AgLlmResponse => {
+          // 8-nov: el tope diario (429 `ai_cap_reached`) se dice en el chat, en el idioma del dueño; no es un error técnico.
+          if (e.message === "ai_cap_reached") {
+            const text = i18n.t("owner.dashboard.ai.capReached", { lng: lang });
+            return { id: id("resp"), createdAt: Date.now(), status: "completed",
+                     output: [{ type: "message", id: id("msg"), role: "assistant", content: [{ type: "text", text }] }] } as unknown as AgLlmResponse;
+          }
+          return { id: id("resp"), createdAt: Date.now(), status: "failed" as const, output: [],
+                   error: { code: e.message || "ai_failed", message: e.message || "ai_failed" } } as unknown as AgLlmResponse;
+        });
       async function* events(): AsyncGenerator<AgAiEvent> {
         const r = await done;
         for (const o of r.output as AgAiOutputItem[]) {

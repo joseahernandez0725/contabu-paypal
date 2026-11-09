@@ -122,6 +122,9 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
       const amount = num(i.amount);
       return {
         number: i.number ?? "—", customer: i.customer?.name ?? "—", concept: i.concept, status,
+        // 8-nov (revisión como cliente): la tabla mostraba "Overdue" y "2026-11" en la pantalla en español.
+        status_label: t(`owner.dashboard.status.${status}`, { defaultValue: status }),
+        due_label: i.due_date ? monthLabelOf(i.due_date.slice(0, 7)) : "—",
         amount,
         collected: status === "Paid" ? amount : 0,
         open: status === "Open" ? amount : 0,
@@ -133,7 +136,15 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
         paid_month_name: monthName(month(i.paid_at)), year: yearOf(month(i.paid_at) ?? month(i.due_date)),
       };
     });
-    const books = [...home.closed_months].sort((a, b) => a.month.localeCompare(b.month)).flatMap((m) => [
+    const closed = [...home.closed_months].sort((a, b) => a.month.localeCompare(b.month));
+    const catLabel = (c: string) => t(`cat.${c}`, { defaultValue: c });
+    // 8-nov (revisión como cliente): "Returns and allowances" salía en "Mayores costos" (con $0), porque la tabla de libros
+    // también tiene las filas de ingresos. Los costos van en su propia tabla, solo con las filas de costos.
+    const spend = closed.flatMap((m) => m.out.map((c) => ({ month: m.month, category: c.category, category_label: catLabel(c.category), costs: num(c.amount) })));
+    // Lo Pendiente de clasificar de cada mes cerrado (regla 4: se declara, nunca se omite).
+    const periods = closed.map((m) => ({ month: m.month, month_label: monthLabelOf(m.month),
+      pending_count: m.pending?.count ?? 0, pending_usd: num(m.pending?.money_in) + num(m.pending?.money_out) }));
+    const books = closed.flatMap((m) => [
       ...m.in.map((c) => ({ month: m.month, month_label: monthLabelOf(m.month), month_start: monthStart(m.month), month_name: monthName(m.month), year: yearOf(m.month), category: c.category, income: num(c.amount), costs: 0 })),
       ...m.out.map((c) => ({ month: m.month, month_label: monthLabelOf(m.month), month_start: monthStart(m.month), month_name: monthName(m.month), year: yearOf(m.month), category: c.category, income: 0, costs: num(c.amount) })),
     ]);
@@ -150,7 +161,8 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
       description: `The dashboard of ${home.company.name}, a small business paid with PayPal. Today is ${new Date().toISOString().slice(0, 10)}. `
         + `"invoices": every invoice sent (paid, open, overdue). "books": income and costs per category for each month the bookkeeper closed`
         + `${home.closed_months.length ? ` (${monthYear(home.closed_months[home.closed_months.length - 1].month)} to ${monthYear(home.closed_months[0].month)})` : ""}. `
-        + `"contractors": payments to contractors with PayPal Payouts. All amounts are USD.`,
+        + `"contractors": payments to contractors with PayPal Payouts. "costs": costs and expenses by category for each closed month. `
+        + `"periods": per closed month, the transactions still pending to classify (not in income or costs). All amounts are USD.`,
       sources: [
         { id: "invoices", name: t("owner.dashboard.src.invoices"), data: inv, fields: [
           { id: "number", name: t("owner.dashboard.f.number"), description: "Invoice number", ...txt },
@@ -166,6 +178,8 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
           { id: "paid_month", name: t("owner.dashboard.f.paidMonth"), description: "Month the invoice was paid, YYYY-MM", ...txt },
           { id: "paid_month_name", name: t("owner.dashboard.f.paidMonthName"), description: "Month name the invoice was paid, e.g. August (the year is in the year field)", ...txt },
           { id: "year", name: t("owner.dashboard.f.year"), description: "Year of the invoice (paid, or due if unpaid)", ...yr },
+          { id: "status_label", name: t("owner.dashboard.f.status"), description: "Status as shown on screen (filter with status)", ...txt },
+          { id: "due_label", name: t("owner.dashboard.f.dueMonth"), description: "Due month as shown on screen", ...txt },
         ] },
         { id: "books", name: t("owner.dashboard.src.books"), data: books, fields: [
           { id: "month", name: t("owner.dashboard.f.month"), description: "Month, YYYY-MM", ...txt },
@@ -185,6 +199,18 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
           { id: "year", name: t("owner.dashboard.f.year"), description: "Year, e.g. 2026", ...yr },
           { id: "amount", name: t("owner.dashboard.f.paid"), ...cur },
           { id: "fee", name: t("owner.dashboard.f.fee"), ...cur },
+        ] },
+        { id: "costs", name: t("owner.dashboard.src.costs"), data: spend, fields: [
+          { id: "month", name: t("owner.dashboard.f.month"), description: "Month, YYYY-MM", ...txt },
+          { id: "category", name: t("owner.dashboard.f.category"), description: "Accounting category (English)", ...txt },
+          { id: "category_label", name: t("owner.dashboard.f.category"), description: "Category as shown on screen", ...txt },
+          { id: "costs", name: t("owner.dashboard.f.costs"), description: "Costs and expenses in USD for a closed month", ...cur },
+        ] },
+        { id: "periods", name: t("owner.dashboard.src.periods"), data: periods, fields: [
+          { id: "month", name: t("owner.dashboard.f.month"), description: "Month, YYYY-MM", ...txt },
+          { id: "month_label", name: t("owner.dashboard.f.month"), description: "Closed month, e.g. Jul 2026", ...txt },
+          { id: "pending_count", name: t("owner.dashboard.f.pendingCount"), description: "Transactions still pending to classify", ...yr },
+          { id: "pending_usd", name: t("owner.dashboard.f.pendingUsd"), description: "USD still pending to classify (money in plus money out), not in income or costs", ...cur },
         ] },
       ],
     };
@@ -212,6 +238,7 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
           open: kpi("invoices.open"),
           overdue: kpi("invoices.overdue"),
           contractors: kpi("contractors.amount"),
+          pending: kpi("periods.pending_usd"),
           whoOwes: {
             type: "contabu-who-owes",
             dataMapping: { customer: [{ id: "invoices.customer" }], open: [{ id: "invoices.open", aggregation: "sum" }],
@@ -225,8 +252,8 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
           },
           costs: {
             type: "bar-chart-grouped",
-            dataMapping: { categoryKey: [{ id: "books.category" }], valueKey: [{ id: "books.costs", aggregation: "sum" }], tooltipKey: [] },
-            sort: [{ field: { id: "books.costs", aggregation: "sum" }, direction: "desc" }],
+            dataMapping: { categoryKey: [{ id: "costs.category_label" }], valueKey: [{ id: "costs.costs", aggregation: "sum" }], tooltipKey: [] },
+            sort: [{ field: { id: "costs.costs", aggregation: "sum" }, direction: "desc" }],
             format: chart("costs", { seriesLimit: { enabled: true, max: 6 } }),
           },
           byCustomer: {
@@ -239,16 +266,17 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
           list: {
             type: "grid",
             dataMapping: { cols: [{ id: "invoices.number" }, { id: "invoices.customer" }, { id: "invoices.concept" },
-                                  { id: "invoices.status" }, { id: "invoices.due_month" }, { id: "invoices.amount", aggregation: "sum" }] },
+                                  { id: "invoices.status_label" }, { id: "invoices.due_label" }, { id: "invoices.amount", aggregation: "sum" }] },
             format: titled("list"),
           },
         },
         widgetLayout: {
           customers: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 6 },
-          collected: { xTrack: 0, yTrack: 6, xSpan: 6, ySpan: 4 },
-          open: { xTrack: 6, yTrack: 6, xSpan: 6, ySpan: 4 },
-          overdue: { xTrack: 12, yTrack: 6, xSpan: 6, ySpan: 4 },
-          contractors: { xTrack: 18, yTrack: 6, xSpan: 6, ySpan: 4 },
+          collected: { xTrack: 0, yTrack: 6, xSpan: 5, ySpan: 4 },
+          open: { xTrack: 5, yTrack: 6, xSpan: 5, ySpan: 4 },
+          overdue: { xTrack: 10, yTrack: 6, xSpan: 5, ySpan: 4 },
+          contractors: { xTrack: 15, yTrack: 6, xSpan: 5, ySpan: 4 },
+          pending: { xTrack: 20, yTrack: 6, xSpan: 4, ySpan: 4 },
           whoOwes: { xTrack: 0, yTrack: 10, xSpan: 9, ySpan: 13 },
           months: { xTrack: 9, yTrack: 10, xSpan: 15, ySpan: 13 },
           costs: { xTrack: 0, yTrack: 23, xSpan: 12, ySpan: 13 },
@@ -260,7 +288,7 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
       panels: { filters: { collapsed: true } },
     } as unknown as AgReportState;
   }, [t]);
-  const widgets = useMemo(() => contabuWidgets(), []);
+  const widgets = useMemo(() => contabuWidgets(), [es]);   // los nombres del menú de edición, en el idioma de la pantalla
   // 8-nov: sin "(sum)" / "(suma)" en las leyendas y los tooltips: todas las cifras del tablero son sumas.
   const localeText = useMemo(() => ({ ...(es ? AG_STUDIO_LOCALE_ES_ES : {}), aggregationSumFieldName: "${name}",
                                        aggregationMaxFieldName: "${name}" }), [es]);

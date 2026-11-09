@@ -604,7 +604,8 @@
     "Subcontractors (1099)": "Subcontratistas (1099)",
     "Freight and shipping": "Fletes y envíos",
     "Nondeductible expenses": "Gastos no deducibles",
-    "Payroll taxes": "Impuestos de nómina"
+    "Payroll taxes": "Impuestos de nómina",
+    "Merchant fees": "Comisiones por cobros"
   },
   "notes": {
     "title": "Notas del libro",
@@ -2548,7 +2549,9 @@
       "src": {
         "invoices": "Facturas",
         "books": "Periodos cerrados",
-        "contractors": "Pagos a contratistas"
+        "contractors": "Pagos a contratistas",
+        "costs": "Costos",
+        "periods": "Periodos cerrados"
       },
       "f": {
         "number": "Factura",
@@ -2571,11 +2574,13 @@
         "paidMonthName": "Mes de pago (nombre)",
         "monthName": "Nombre del mes",
         "year": "Año",
-        "daysOverdue": "Días de atraso"
+        "daysOverdue": "Días de atraso",
+        "pendingCount": "Transacciones pendientes",
+        "pendingUsd": "Pendiente de clasificar"
       },
       "w": {
         "collected": "Cobrado con PayPal",
-        "open": "Por cobrar",
+        "open": "Por cobrar, aún no vence",
         "overdue": "Vencido",
         "contractorsPaid": "Pagado a contratistas",
         "byCustomer": "Facturas por cliente",
@@ -2584,7 +2589,9 @@
         "costs": "Mayores costos por categoría",
         "list": "Tus facturas",
         "whoOwes": "Quién me debe",
-        "filterCustomers": "Clientes"
+        "filterCustomers": "Clientes",
+        "pending": "Pendiente de clasificar",
+        "kpi": "Indicador"
       },
       "ai": {
         "open": "Preguntarle al asistente",
@@ -2619,7 +2626,8 @@
           "checkOk": "El código revisó {{count}} cifra(s) contra los datos: todas encontradas",
           "checkBad": "El código no encontró {{figures}} en los datos: la respuesta se ocultó",
           "checkNone": "La respuesta no tiene cifras que revisar"
-        }
+        },
+        "capReached": "Llegaste al límite de preguntas al asistente por hoy. El tablero sigue funcionando; puedes volver a preguntar mañana."
       },
       "owes": {
         "total": "{{amount}} por cobrar",
@@ -2633,7 +2641,17 @@
       "kpi": {
         "openNone": "Nada pendiente",
         "overdueNone": "Nada vencido ✓",
-        "overdueSome": "Necesita un recordatorio"
+        "overdueSome": "Necesita un recordatorio",
+        "pendingSome": "Tu bookkeeper lo está clasificando",
+        "pendingNone": "Todo clasificado ✓"
+      },
+      "status": {
+        "Paid": "Pagada",
+        "Open": "Abierta",
+        "Overdue": "Vencida",
+        "Refunded": "Devuelta",
+        "Cancelled": "Cancelada",
+        "Draft": "Borrador"
       }
     }
   }

@@ -81,18 +81,40 @@ def contractor_totals(session: Session, company: Company) -> dict:
     }
 
 
+def _pending(m: dict) -> dict:
+    """Lo Pendiente de clasificar de un mes cerrado (la foto lo trae; no entra en ingresos ni en costos)."""
+    p = m.get("pending") or {}
+    return {"p_count": int(p.get("count") or 0), "p_in": Decimal(str(p.get("money_in") or 0)),
+            "p_out": Decimal(str(p.get("money_out") or 0))}
+
+
+def _pending_total(snaps: list[dict]) -> dict:
+    """8-nov (regla 4): lo Pendiente se declara, nunca se omite. Si es cero, lo dice."""
+    ps = [_pending(m) for m in snaps]
+    n = sum(p["p_count"] for p in ps)
+    if not n:
+        return {"transactions": 0, "note": "Nothing pending: every transaction of the closed months is classified."}
+    return {"transactions": n, "money_in_usd": _usd(sum(p["p_in"] for p in ps)),
+            "money_out_usd": _usd(sum(p["p_out"] for p in ps)),
+            "note": "Not included in income, costs or categories until the bookkeeper classifies them. Mention it."}
+
+
 def month_totals(session: Session, company: Company) -> dict:
     snaps = sorted(month_close.owner_months(session, company.id), key=lambda m: m["month"])
     if not snaps:
         return {"none": "No closed months yet."}
     ms = [{"month": _month_label(m["month"]), "income": Decimal(str(m.get("total_in") or 0)),
-           "costs": Decimal(str(m.get("total_out") or 0))} for m in snaps]
+           "costs": Decimal(str(m.get("total_out") or 0)), **_pending(m)} for m in snaps]
     for m in ms:
         m["net"] = m["income"] - m["costs"]
 
     def fmt(m):
-        return {"month": m["month"], "income_usd": _usd(m["income"]), "costs_usd": _usd(m["costs"]),
-                "income_minus_costs_usd": _usd(m["net"])}
+        out = {"month": m["month"], "income_usd": _usd(m["income"]), "costs_usd": _usd(m["costs"]),
+               "income_minus_costs_usd": _usd(m["net"])}
+        if m["p_count"]:   # Lo Pendiente se declara (regla 4): no está en ingresos ni en costos
+            out["pending_to_classify"] = {"transactions": m["p_count"], "money_in_usd": _usd(m["p_in"]),
+                                          "money_out_usd": _usd(m["p_out"])}
+        return out
 
     def top(k, hi):
         return fmt(sorted(ms, key=lambda m: m[k], reverse=hi)[0])
@@ -104,6 +126,7 @@ def month_totals(session: Session, company: Company) -> dict:
         "best_month_income_minus_costs": top("net", True),
         "all_closed_months_total": {"income_usd": _usd(sum(m["income"] for m in ms)), "costs_usd": _usd(sum(m["costs"] for m in ms)),
                                     "income_minus_costs_usd": _usd(sum(m["net"] for m in ms))},
+        "pending_to_classify": _pending_total(snaps),
         "source": "the snapshots of the months the bookkeeper closed (computed by SQL at close)",
     }
 
@@ -119,6 +142,7 @@ def category_totals(session: Session, company: Company) -> dict:
     return {
         "categories_largest_first": [{"rank": i + 1, "category": k, "costs_usd": _usd(v)} for i, (k, v) in enumerate(ordered)],
         "all_categories_total_usd": _usd(sum(by.values())),
+        "pending_to_classify": _pending_total(month_close.owner_months(session, company.id)),
         "source": "the snapshots of the months the bookkeeper closed (computed by SQL at close)",
     }
 

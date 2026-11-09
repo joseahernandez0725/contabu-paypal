@@ -2419,7 +2419,9 @@
       "src": {
         "invoices": "Invoices",
         "books": "Closed periods",
-        "contractors": "Contractor payments"
+        "contractors": "Contractor payments",
+        "costs": "Costs",
+        "periods": "Closed periods"
       },
       "f": {
         "number": "Invoice",
@@ -2442,11 +2444,13 @@
         "paidMonthName": "Month paid",
         "monthName": "Month name",
         "year": "Year",
-        "daysOverdue": "Days overdue"
+        "daysOverdue": "Days overdue",
+        "pendingCount": "Transactions pending",
+        "pendingUsd": "Pending to classify"
       },
       "w": {
         "collected": "Collected with PayPal",
-        "open": "Outstanding",
+        "open": "Not due yet",
         "overdue": "Overdue",
         "contractorsPaid": "Paid to contractors",
         "byCustomer": "Invoices by customer",
@@ -2455,7 +2459,9 @@
         "costs": "Top costs by category",
         "list": "Your invoices",
         "whoOwes": "Who owes me",
-        "filterCustomers": "Customers"
+        "filterCustomers": "Customers",
+        "pending": "Pending to classify",
+        "kpi": "Indicator"
       },
       "ai": {
         "open": "Ask the assistant",
@@ -2490,7 +2496,8 @@
           "checkOk": "The code checked {{count}} figure(s) against the data: all found",
           "checkBad": "The code could not find {{figures}} in the data: the answer was hidden",
           "checkNone": "The answer has no figures to check"
-        }
+        },
+        "capReached": "You reached today's limit of questions to the assistant. The dashboard still works; you can ask again tomorrow."
       },
       "owes": {
         "total": "{{amount}} to collect",
@@ -2504,7 +2511,17 @@
       "kpi": {
         "openNone": "Nothing waiting",
         "overdueNone": "Nothing overdue ✓",
-        "overdueSome": "Needs a reminder"
+        "overdueSome": "Needs a reminder",
+        "pendingSome": "Your bookkeeper is classifying it",
+        "pendingNone": "Everything classified ✓"
+      },
+      "status": {
+        "Paid": "Paid",
+        "Open": "Open",
+        "Overdue": "Overdue",
+        "Refunded": "Refunded",
+        "Cancelled": "Cancelled",
+        "Draft": "Draft"
       }
     }
   }

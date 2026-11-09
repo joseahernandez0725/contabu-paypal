@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import i18n from "../../i18n";
 import { AgLoadingOverlay, createWidgets } from "ag-studio-react";
 
 // LOS WIDGETS PROPIOS DEL TABLERO (FASE 16, rama `paypal-contest`, 8-nov). El premio de AG Studio valora "custom widgets,
@@ -134,7 +135,7 @@ function WhoOwes(params: any) {
 const ic = (d: string) => (
   <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
 );
-type Tone = "good" | "info" | "bad" | "neutral";
+type Tone = "good" | "info" | "bad" | "warn" | "neutral";
 /** Cada indicador por su id en el tablero: texto, ícono y cuándo es bueno o malo. */
 const KPI: Record<string, { label: string; icon: string; tone: (v: number) => Tone; hint?: (v: number) => string | null }> = {
   collected: { label: "collected", icon: "M20 6 9 17l-5-5", tone: () => "good" },
@@ -142,10 +143,13 @@ const KPI: Record<string, { label: string; icon: string; tone: (v: number) => To
           hint: (v) => (v > 0 ? null : "openNone") },
   overdue: { label: "overdue", icon: "M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0", tone: (v) => (v > 0 ? "bad" : "good"),
              hint: (v) => (v > 0 ? "overdueSome" : "overdueNone") },
+  // 8-nov (regla 4): lo Pendiente de clasificar de los meses cerrados se declara siempre, aunque sea cero.
+  pending: { label: "pending", icon: "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2",
+             tone: (v) => (v > 0 ? "warn" : "good"), hint: (v) => (v > 0 ? "pendingSome" : "pendingNone") },
   contractors: { label: "contractorsPaid", icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9", tone: () => "neutral" },
 };
 const TONE: Record<Tone, string> = {
-  good: "bg-emerald-50 text-emerald-700", info: "bg-sky-50 text-[#0070BA]", bad: "bg-rose-50 text-rose-700", neutral: "bg-slate-100 text-slate-600",
+  good: "bg-emerald-50 text-emerald-700", warn: "bg-amber-50 text-amber-700", info: "bg-sky-50 text-[#0070BA]", bad: "bg-rose-50 text-rose-700", neutral: "bg-slate-100 text-slate-600",
 };
 
 function Kpi(params: any) {
@@ -163,7 +167,7 @@ function Kpi(params: any) {
       <div className="min-w-0">
         <div className={`text-xl font-semibold tabular-nums leading-tight ${tone === "bad" ? "text-rose-700" : "text-slate-900"}`}>{usd(shown, i18n.language)}</div>
         <div className="truncate text-xs text-slate-500">{t(`owner.dashboard.w.${cfg.label}`)}</div>
-        {hint && <div className={`truncate text-[11px] ${tone === "bad" ? "text-rose-700" : "text-emerald-700"}`}>{t(`owner.dashboard.kpi.${hint}`)}</div>}
+        {hint && <div className={`truncate text-[11px] ${tone === "bad" ? "text-rose-700" : tone === "warn" ? "text-amber-700" : "text-emerald-700"}`}>{t(`owner.dashboard.kpi.${hint}`)}</div>}
       </div>
     </div>
   );
@@ -178,7 +182,7 @@ export function contabuWidgets(): any {
   return createWidgets({
     additionalTypes: [
       {
-        id: "contabu-who-owes", label: "Who owes me", comp: WhoOwes, form: noEdit, toolbar: [],
+        id: "contabu-who-owes", label: i18n.t("owner.dashboard.w.whoOwes"), comp: WhoOwes, form: noEdit, toolbar: [],
         dataMapping: {
           customer: { type: "field", supportedRoles: ["category"], requires: { cardinality: "many" }, required: true },
           open: { type: "field", supportedRoles: ["numeric"], requires: { per: "dataMapping.customer", cardinality: "one" } },
@@ -190,7 +194,7 @@ export function contabuWidgets(): any {
         ai: { description: "Who owes the business money: each customer with the amount owed, how much is overdue and the days late. Computed by the code." },
       },
       {
-        id: "contabu-kpi", label: "KPI", comp: Kpi, form: noEdit, toolbar: [],
+        id: "contabu-kpi", label: i18n.t("owner.dashboard.w.kpi"), comp: Kpi, form: noEdit, toolbar: [],
         dataMapping: { value: { type: "field", supportedRoles: ["numeric"], requires: { cardinality: "one" }, required: true } },
         defaultSize: { width: 200, height: 100 }, minSize: { width: 140, height: 72 },
         ai: { description: "A single total (USD) with an icon and a color that says if it is good or bad." },

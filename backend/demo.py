@@ -475,7 +475,8 @@ def check_global_cap(session: Session, agent: Optional[str] = None) -> None:
     cap = GLOBAL_DAILY_SEARCHES if searches else GLOBAL_DAILY_CALLS
     if cap <= 0:
         return
-    agents = ("verifier",) if searches else agent_calls._MODEL_AGENTS
+    # 8-nov: el asistente del Tablero también gasta del tope del demo entero (tiene además su tope por oficina).
+    agents = ("verifier",) if searches else agent_calls._MODEL_AGENTS + (agent_calls.STUDIO_AGENT,)
     since = _now() - timedelta(hours=24)
     used = session.exec(select(func.count(AgentCall.id))
                         .where(AgentCall.created_at >= since, AgentCall.agent.in_(agents))).one()

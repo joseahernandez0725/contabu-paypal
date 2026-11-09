@@ -35,7 +35,7 @@ from models import Company, User
 
 router = APIRouter()
 
-AGENT = "studio_assistant"
+AGENT = agent_calls.STUDIO_AGENT
 MAX_ITEMS = 80          # turnos de conversación que se aceptan por petición
 MAX_CHARS = 120_000     # tope del pedido completo (instrucciones + conversación + herramientas)
 MAX_TOKENS = 1500
@@ -75,7 +75,10 @@ _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 # sumó él), la respuesta NO se muestra: se reemplaza por un aviso con las cifras que no se pudieron verificar.
 # Montos: con "$", con separador de miles, con decimales, o enteros de 4+ cifras que no son un año ("5810 USD"; ✅ 8-nov se
 # colaba sin "$" ni coma).
-_AMOUNT_RE = re.compile(r"(\$\s?-?\d[\d,]*(?:\.\d+)?|-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+\.\d+|(?<![\d-])(?!0)(?!(?:19|20)\d{2}\b)\d{4,}(?![\d-]))")
+# 8-nov (revisión como cliente): en español el modelo escribió "2.330" (punto de miles, coma decimal) y la revisión lo leyó
+# como 2.33 y ocultó una respuesta correcta. Ese formato se captura entero ("2.330,50") y se prueba de las dos maneras.
+_EURO_RE = re.compile(r"^\$?\s?-?\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$")
+_AMOUNT_RE = re.compile(r"(\$\s?-?\d{1,3}(?:\.\d{3})+,\d{1,2}|-?\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?(?![\d.])|\$\s?-?\d[\d,]*(?:\.\d+)?|-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+\.\d+|(?<![\d-])(?!0)(?!(?:19|20)\d{2}\b)\d{4,}(?![\d-]))")
 _ANY_NUM_RE = re.compile(r"-?\d+(?:\.\d+)?")
 
 
@@ -83,7 +86,7 @@ def _num(text: str) -> Optional[float]:
     try:
         return round(float(text.replace("$", "").replace(",", "").strip()), 2)
     except ValueError:
-        return None
+        return _euro(text)
 
 
 def amounts_in(text: str) -> list[tuple[str, float]]:
@@ -111,9 +114,25 @@ def tool_numbers(items: list[dict]) -> set[float]:
     return nums
 
 
+def _euro(raw: str) -> Optional[float]:
+    """"2.330" o "$2.330,50" leídos con punto de miles y coma decimal (como los escribe el modelo en español)."""
+    if not _EURO_RE.match(raw.strip()):
+        return None
+    try:
+        return round(float(raw.replace("$", "").strip().replace(".", "").replace(",", ".")), 2)
+    except ValueError:
+        return None
+
+
 def unverified_amounts(text: str, items: list[dict]) -> list[str]:
     known = tool_numbers(items)
-    return [raw for raw, v in amounts_in(text) if v not in known and -v not in known]
+    bad = []
+    for raw, v in amounts_in(text):
+        alt = _euro(raw)
+        if any(x is not None and (x in known or -x in known) for x in (v, alt)):
+            continue
+        bad.append(raw)
+    return bad
 
 
 _TOO_MANY = {
@@ -183,6 +202,12 @@ def to_tools(tools: list[dict]) -> list[dict]:
             for t in tools if t.get("name") and t.get("kind") != "provided"]
 
 
+def _new_question(items: list[dict]) -> bool:
+    """¿El último elemento es un mensaje del dueño (y no el resultado de una herramienta del navegador)?"""
+    last = items[-1] if items else {}
+    return last.get("role") == "user" and last.get("type", "message") == "message"
+
+
 def to_tool_choice(choice: Union[str, dict, None]) -> Union[str, dict, None]:
     if isinstance(choice, dict) and choice.get("name"):
         return {"type": "function", "function": {"name": choice["name"]}}
@@ -216,7 +241,7 @@ def studio_turn(company_id: int, payload: StudioTurn, user: User = Depends(curre
     if len(payload.input) > MAX_ITEMS or len(json.dumps(payload.model_dump())) > MAX_CHARS:
         raise HTTPException(status_code=413, detail="too_long")
     try:
-        agent_calls.check_cap(session, company)
+        agent_calls.check_cap(session, company, AGENT)   # 8-nov: su tope propio, y el del demo entero
     except agent_calls.CapReached:
         raise HTTPException(status_code=429, detail="ai_cap_reached")
 
@@ -243,6 +268,10 @@ def studio_turn(company_id: int, payload: StudioTurn, user: User = Depends(curre
             body["tools"] = tools
             if choice and loop == 0:
                 body["tool_choice"] = choice
+            elif loop == 0 and _new_question(payload.input):
+                # 8-nov (juego de 10 preguntas, 2ª vuelta): con la conversación avanzada el modelo respondió sin llamar
+                # ninguna herramienta e inventó cifras (la revisión las ocultó). Ante una pregunta nueva, primero consulta.
+                body["tool_choice"] = "required"
         started = time.monotonic()
         try:
             r = nemotron._post(body)
