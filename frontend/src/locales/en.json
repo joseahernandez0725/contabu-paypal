@@ -2513,7 +2513,14 @@
         },
         "capReached": "You reached today's limit of questions to the assistant. The dashboard still works; you can ask again tomorrow.",
         "welcome": "Hi! I read this dashboard and help you collect.\nAsk me who to remind first, who your best customers are, or what you spent in a month. I never send anything, and every figure comes from your data.",
-        "fab": "Ask the assistant"
+        "fab": "Ask the assistant",
+        "panel": "AI assistant",
+        "new": "New",
+        "thinking": "Thinking…",
+        "placeholder": "Ask about your invoices, customers or months…",
+        "model": "Model",
+        "stop": "Stop",
+        "send": "Send"
       },
       "owes": {
         "total": "{{amount}} to collect",

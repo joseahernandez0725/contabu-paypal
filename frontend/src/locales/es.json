@@ -2643,7 +2643,14 @@
         },
         "capReached": "Llegaste al límite de preguntas al asistente por hoy. El tablero sigue funcionando; puedes volver a preguntar mañana.",
         "welcome": "¡Hola! Leo este tablero y te ayudo a cobrar.\nPregúntame a quién recordarle primero, quiénes son tus mejores clientes o cuánto gastaste en un mes. Nunca envío nada y cada cifra sale de tus datos.",
-        "fab": "Pregúntale al asistente"
+        "fab": "Pregúntale al asistente",
+        "panel": "Asistente de IA",
+        "new": "Nuevo",
+        "thinking": "Pensando…",
+        "placeholder": "Pregunta por tus facturas, clientes o meses…",
+        "model": "Modelo",
+        "stop": "Detener",
+        "send": "Enviar"
       },
       "owes": {
         "total": "{{amount}} por cobrar",

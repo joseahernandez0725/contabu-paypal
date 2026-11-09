@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgStudio, AgStudioProvider } from "ag-studio-react";
-import { AgStudioAiModule, studioTheme, type AgReportState, type AgResponsiveLayoutBreakpoint } from "ag-studio";
+import { AgStudioAiModule, studioTheme, type AgAiHarness, type AgReportState, type AgResponsiveLayoutBreakpoint } from "ag-studio";
 import { AG_STUDIO_LOCALE_ES_ES } from "ag-studio-locale";
 import { getContractors, getInvoices, type ContractorPayment, type OwnerHome, type OwnerInvoice, type StudioStep, type StudioTurnCost } from "../../api";
 import { inTour } from "../../demo";
 import { collectionsAssistant, modelLabel, STUDIO_AI_TEXT, toolDisplay } from "./studioAssistant";
 import { contabuWidgets } from "./studioWidgets";
 import AiTrace, { type TraceStep } from "./AiTrace";
+import OwnerChat from "./OwnerChat";
 
 // EL TABLERO DEL DUEÑO CON AG STUDIO (FASE 16, solo en la rama `paypal-contest`: AG Studio es de pago y ContaBu no
 // depende de él; Jose, 2-nov y 6-nov). Premio "Best Use of AG Grid" (pide AG Studio, 16.B §10).
@@ -83,26 +84,10 @@ const monthStart = (ym: string) => new Date(Number(ym.slice(0, 4)), Number(ym.sl
 // - Un saludo en el chat vacío (antes: un panel en blanco). - Sin el selector de conversaciones viejas (sobraba; "Nuevo"
 //   se queda). - El encabezado del panel no lo pliega (plegado, el chat desaparecía sin una forma clara de abrirlo).
 const STUDIO_CSS = `
-.contabu-studio .ag-studio-ai-message-container:empty::before {
-  content: var(--contabu-welcome); display: block; margin: 12px; padding: 12px 14px; border-radius: 12px;
-  background: #F1F5F9; color: #334155; font-size: 13px; line-height: 1.45; white-space: pre-line;
-}
-.contabu-studio .ag-studio-ai-thread-button { visibility: hidden; }
 .contabu-studio .ag-studio-button-filter-widget .ag-studio-filter-widget-title { display: none; }
-.contabu-studio .ag-studio-ai-panel > .ag-studio-panel-header { pointer-events: none; }
-/* 8-nov (Jose: "muy invasivo para ser un chat"): el panel del chat flota abajo a la derecha, encima de los gráficos, y el
-   lienzo conserva todo su ancho. Se abre y se cierra con el botón redondo. */
-.contabu-studio.asking .ag-studio-root-panel-container-right {
-  position: fixed; right: 20px; bottom: 88px; z-index: 60;
-  width: min(380px, calc(100vw - 24px)); height: min(560px, calc(100vh - 150px));
-  border-radius: 16px; overflow: hidden; background: #FFFFFF;
-  box-shadow: 0 16px 48px rgba(15, 23, 42, .22), 0 0 0 1px rgba(15, 23, 42, .08);
-}
-.contabu-studio.asking .ag-studio-root-panel-container-right .ag-studio-panel { width: 100% !important; height: 100%; }
-.contabu-studio.asking .ag-studio-ai-panel > .ag-studio-panel-header [class*="icon"] { display: none; }
-@media (max-width: 640px) {
-  .contabu-studio.asking .ag-studio-root-panel-container-right { right: 12px; bottom: 84px; height: min(520px, calc(100vh - 140px)); }
-}
+/* El chat propio (OwnerChat) flota abajo a la derecha, encima de los gráficos (8-nov). */
+.contabu-chat { right: 20px; bottom: 88px; width: min(380px, calc(100vw - 24px)); height: min(560px, calc(100vh - 150px)); }
+@media (max-width: 640px) { .contabu-chat { right: 12px; bottom: 84px; height: min(520px, calc(100vh - 140px)); } }
 /* "Lo que hizo la IA" flota siempre, fuera de la página (8-nov: en pantallas angostas iba en la página, encima del tablero,
    y al aparecer o al cerrar el chat empujaba todo: el "salto" que vio Jose). Ancho: a la izquierda del chat; angosto: encima. */
 .contabu-trace { position: fixed; z-index: 60; overflow: auto; border-radius: 12px; background: #FFFFFF;
@@ -128,28 +113,6 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
   // El asistente (Agent Framework): solo el dueño en su libro; ni la vista previa del bookkeeper ni la visita (sin IA).
   const canAsk = !home.preview && !inTour();
   const [asking, setAsking] = useState(false);
-  // 8-nov (Jose: "al abrir el chat y cerrarlo se pierde la plantilla"): el chat de AG Studio solo existe en modo edición, y
-  // al volver al modo vista AG Studio reacomodaba los widgets (el filtro de clientes quedaba de 947 px en vez de 1.311). Al
-  // abrir el chat se guarda la distribución; al cerrarlo se devuelve, sin tocar los filtros que el dueño o la IA pusieron.
-  const studioRef = useRef<AgStudio | null>(null);
-  const savedLayout = useRef<Record<string, unknown> | null>(null);
-  useEffect(() => {
-    const api = studioRef.current?.api;
-    if (!api) return;
-    if (asking) {
-      savedLayout.current = Object.fromEntries(api.getState().pages.map((p) => [p.id, p.widgetLayout]));
-      return;
-    }
-    const saved = savedLayout.current;
-    if (!saved) return;
-    const restore = () => {
-      const cur = api.getState();
-      api.setState({ ...cur, pages: cur.pages.map((p) => (saved[p.id] ? { ...p, widgetLayout: { ...(p.widgetLayout as object), ...(saved[p.id] as object) } } : p)) } as AgReportState);
-    };
-    const t1 = setTimeout(restore, 0);
-    const t2 = setTimeout(restore, 400);   // por si AG Studio vuelve a acomodar al terminar de cambiar de modo
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [asking]);
   // Por cada respuesta (8-nov): se acumulan sus turnos hasta el final y se muestra el resumen, con la revisión de cifras.
   type Answer = { turns: number; ms: number; tokens: number; usd: number; model: string; verified: boolean | null; steps: StudioStep[] };
   const running = useRef<Answer>({ turns: 0, ms: 0, tokens: 0, usd: 0, model: "", verified: null, steps: [] });
@@ -168,11 +131,15 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
   const toolName = (n: string) => (t(`owner.dashboard.ai.tool.${n === "customer_totals" ? "customerTotals" : n === "contractor_totals" ? "contractorTotals"
     : n === "month_totals" ? "monthTotals" : n === "category_totals" ? "categoryTotals" : n === "reminder_candidates" ? "reminderCandidates"
     : n === "open_collections" ? "openCollections" : `studio.${n}`}`, { name: n, defaultValue: n }));
-  const ai = useMemo(() => collectionsAssistant(es ? "es" : "en", onTurn, [
+  const starters = useMemo(() => [
     { label: t("owner.dashboard.ai.s1"), prompt: t("owner.dashboard.ai.p1") },
     { label: t("owner.dashboard.ai.s2"), prompt: t("owner.dashboard.ai.p2") },
     { label: t("owner.dashboard.ai.s3"), prompt: t("owner.dashboard.ai.p3") },
-  ]), [es, onTurn, t]);
+  ], [t]);
+  const [harness, setHarness] = useState<AgAiHarness | null>(null);
+  // AG Studio solo arma el harness cuando abre su propio panel (modo edición). El tablero se queda en modo vista, así que
+  // lo armamos nosotros con la misma función en cuanto su API está lista (`onApiReady`).
+  const ai = useMemo(() => collectionsAssistant(es ? "es" : "en", onTurn, starters), [es, onTurn, starters]);
 
   useEffect(() => {
     getInvoices().then((v) => setInvoices(v.invoices)).catch(() => setError(true));
@@ -411,16 +378,19 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
       {/* `key`: AG Studio fija el idioma al crearse; al cambiarlo se vuelve a crear. El chat de AG Studio solo existe en
           el modo de edición: con el asistente abierto se pasa a ese modo, pero solo con el panel del chat. */}
       <style>{STUDIO_CSS}</style>
-      <div className={`contabu-studio overflow-hidden${asking ? " asking" : ""}`} style={{ ["--contabu-welcome" as string]: JSON.stringify(t("owner.dashboard.ai.welcome")).replace(/\\n/g, "\\A "), height: NARROW ? MOBILE_TRACKS * 22 + 60 + LIST_TRACKS * 22 : TRACKS * 22 + 90, minHeight: 560 }}>
+      <div className="contabu-studio overflow-hidden" style={{ height: NARROW ? MOBILE_TRACKS * 22 + 60 + LIST_TRACKS * 22 : TRACKS * 22 + 90, minHeight: 560 }}>
         <AgStudioProvider licenseKey={LICENSE} modules={[AgStudioAiModule]}>
-          <AgStudio ref={studioRef} key={es ? "es" : "en"} data={data as never} initialState={initialState} mode={asking ? "edit" : "view"} theme={theme} widgets={widgets}
+          <AgStudio key={es ? "es" : "en"} data={data as never} initialState={initialState} mode="view" theme={theme} widgets={widgets}
+                    onApiReady={canAsk ? (e: { api: unknown }) => setHarness((ai as (p: { api: unknown }) => AgAiHarness)({ api: e.api })) : undefined}
                     localeText={localeText} ai={canAsk ? ai : undefined} aiText={STUDIO_AI_TEXT} aiToolDisplay={tools}
                     responsiveLayoutBreakpoints={RESPONSIVE}
-                    panels={{ edit: { left: [], right: ["ai"] }, view: { left: [], right: [] } }}
+                    panels={{ view: { left: [], right: [] } }}
                     style={{ height: "100%", width: "100%" }} />
         </AgStudioProvider>
       </div>
       <p className="text-[11px] text-slate-400">{t("owner.dashboard.note")}</p>
+      {/* Se oculta al cerrarlo, no se desmonta: la conversación sigue ahí al volver a abrirlo. */}
+      {canAsk && <OwnerChat open={asking} harness={harness} starters={starters} toolName={toolName} onClose={() => setAsking(false)} />}
       {canAsk && (
         <button onClick={() => setAsking((a) => !a)} aria-expanded={asking}
                 aria-label={asking ? t("owner.dashboard.ai.close") : t("owner.dashboard.ai.open")}

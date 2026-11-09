@@ -1,4 +1,4 @@
-import { createAiHarness, directLlmRunner, type AgAiEvent, type AgAiHarnessSetup, type AgAiOutputItem, type AgAiTool,
+import { createAiHarness, directLlmRunner, type AgAiEvent, type AgAiHarness, type AgAiHarnessSetup, type AgAiOutputItem, type AgAiTool,
          type AgLlmAdapter, type AgLlmResponse } from "ag-studio";
 import { getInvoices, studioTurn, type StudioTurnCost } from "../../api";
 import i18n from "../../i18n";
@@ -167,9 +167,11 @@ export function toolDisplay(t: (k: string) => string) {
 }
 
 export function collectionsAssistant(lang: string, onTurn: (c: StudioTurnCost) => void,
-                                     starters: { label: string; prompt: string }[]): AgAiHarnessSetup {
+                                     starters: { label: string; prompt: string }[],
+                                     onHarness?: (h: AgAiHarness) => void): AgAiHarnessSetup {
   const adapter = contabuAdapter(onTurn, lang);
-  return ({ api }) => createAiHarness(api as unknown as Parameters<typeof createAiHarness>[0], ({ tools }) => ({
+  // 8-nov: el harness que arma AG Studio se le pasa también a nuestro chat (`OwnerChat`), que lo usa en modo vista.
+  return ({ api }) => keep(onHarness, createAiHarness(api as unknown as Parameters<typeof createAiHarness>[0], ({ tools }) => ({
     agents: [directLlmRunner({
       id: "collections", name: "ContaBu", adapter, maxTurns: 8,
       description: "Collections assistant for the owner's dashboard",
@@ -182,5 +184,6 @@ export function collectionsAssistant(lang: string, onTurn: (c: StudioTurnCost) =
     primary: "collections",
     models: MODELS,
     promptStarters: starters,
-  }));
+  })));
 }
+const keep = (cb: ((h: AgAiHarness) => void) | undefined, h: AgAiHarness) => { cb?.(h); return h; };
