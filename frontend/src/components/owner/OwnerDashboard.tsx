@@ -49,6 +49,8 @@ const RESPONSIVE: AgResponsiveLayoutBreakpoint[] = [{
   },
 }];
 const NARROW = typeof window !== "undefined" && window.innerWidth < 640;
+const TOP_CUSTOMERS = 10;    // "Facturas por cliente": los 10 que más facturaron, el resto en "Otros"
+const BUTTONS_UP_TO = 6;     // hasta 6 clientes, botones; con más, nuestro buscador (`contabu-customer-search`)
 const MOBILE_TRACKS = 3 + 5 * 4 + 4 * 13;   // en el celular, uno debajo del otro (sin la tabla, que se suma aparte)
 
 const PAID = new Set(["PAID", "MARKED_AS_PAID", "PAID_EXTERNAL"]);
@@ -88,6 +90,25 @@ const STUDIO_CSS = `
 .contabu-studio .ag-studio-ai-thread-button { visibility: hidden; }
 .contabu-studio .ag-studio-button-filter-widget .ag-studio-filter-widget-title { display: none; }
 .contabu-studio .ag-studio-ai-panel > .ag-studio-panel-header { pointer-events: none; }
+/* 8-nov (Jose: "muy invasivo para ser un chat"): el panel del chat flota abajo a la derecha, encima de los gráficos, y el
+   lienzo conserva todo su ancho. Se abre y se cierra con el botón redondo. */
+.contabu-studio.asking .ag-studio-root-panel-container-right {
+  position: fixed; right: 20px; bottom: 88px; z-index: 60;
+  width: min(380px, calc(100vw - 24px)); height: min(560px, calc(100vh - 150px));
+  border-radius: 16px; overflow: hidden; background: #FFFFFF;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, .22), 0 0 0 1px rgba(15, 23, 42, .08);
+}
+.contabu-studio.asking .ag-studio-root-panel-container-right .ag-studio-panel { width: 100% !important; height: 100%; }
+.contabu-studio.asking .ag-studio-ai-panel > .ag-studio-panel-header [class*="icon"] { display: none; }
+@media (max-width: 640px) {
+  .contabu-studio.asking .ag-studio-root-panel-container-right { right: 12px; bottom: 84px; height: min(520px, calc(100vh - 140px)); }
+}
+/* "Lo que hizo la IA": en pantallas anchas, a la izquierda del chat; en el celular, en la página. */
+@media (min-width: 900px) {
+  .contabu-trace { position: fixed; right: 412px; bottom: 88px; z-index: 60; width: 320px;
+    max-height: min(560px, calc(100vh - 150px)); overflow: auto; border-radius: 12px; background: #FFFFFF;
+    box-shadow: 0 16px 48px rgba(15, 23, 42, .18); }
+}
 `;
 
 export default function OwnerDashboard({ home }: { home: OwnerHome }) {
@@ -99,6 +120,28 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
   // El asistente (Agent Framework): solo el dueño en su libro; ni la vista previa del bookkeeper ni la visita (sin IA).
   const canAsk = !home.preview && !inTour();
   const [asking, setAsking] = useState(false);
+  // 8-nov (Jose: "al abrir el chat y cerrarlo se pierde la plantilla"): el chat de AG Studio solo existe en modo edición, y
+  // al volver al modo vista AG Studio reacomodaba los widgets (el filtro de clientes quedaba de 947 px en vez de 1.311). Al
+  // abrir el chat se guarda la distribución; al cerrarlo se devuelve, sin tocar los filtros que el dueño o la IA pusieron.
+  const studioRef = useRef<AgStudio | null>(null);
+  const savedLayout = useRef<Record<string, unknown> | null>(null);
+  useEffect(() => {
+    const api = studioRef.current?.api;
+    if (!api) return;
+    if (asking) {
+      savedLayout.current = Object.fromEntries(api.getState().pages.map((p) => [p.id, p.widgetLayout]));
+      return;
+    }
+    const saved = savedLayout.current;
+    if (!saved) return;
+    const restore = () => {
+      const cur = api.getState();
+      api.setState({ ...cur, pages: cur.pages.map((p) => (saved[p.id] ? { ...p, widgetLayout: { ...(p.widgetLayout as object), ...(saved[p.id] as object) } } : p)) } as AgReportState);
+    };
+    const t1 = setTimeout(restore, 0);
+    const t2 = setTimeout(restore, 400);   // por si AG Studio vuelve a acomodar al terminar de cambiar de modo
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [asking]);
   // Por cada respuesta (8-nov): se acumulan sus turnos hasta el final y se muestra el resumen, con la revisión de cifras.
   type Answer = { turns: number; ms: number; tokens: number; usd: number; model: string; verified: boolean | null; steps: StudioStep[] };
   const running = useRef<Answer>({ turns: 0, ms: 0, tokens: 0, usd: 0, model: "", verified: null, steps: [] });
@@ -131,7 +174,7 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
   // Los datos: tres tablas de filas planas, todas con cifras que ya calculó el código (SQL).
   const data = useMemo(() => {
     if (!invoices) return null;
-    const inv = invoices.filter((i) => i.status !== "DRAFT").map((i) => {
+    const inv0 = invoices.filter((i) => i.status !== "DRAFT").map((i) => {
       const status = statusOf(i);
       const amount = num(i.amount);
       return {
@@ -150,6 +193,13 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
         paid_month_name: monthName(month(i.paid_at)), year: yearOf(month(i.paid_at) ?? month(i.due_date)),
       };
     });
+    // 8-nov (muchos clientes): "Facturas por cliente" muestra los 10 que más facturaron y junta el resto en "Otros"; el
+    // código decide quiénes son (suma de lo facturado), no el gráfico.
+    const billed = new Map<string, number>();
+    for (const r of inv0) billed.set(r.customer, (billed.get(r.customer) ?? 0) + r.amount);
+    const top = new Set([...billed.entries()].sort((a, b) => b[1] - a[1]).slice(0, TOP_CUSTOMERS).map(([c]) => c));
+    const others = t("owner.dashboard.others");
+    const inv = inv0.map((r) => ({ ...r, customer_group: top.has(r.customer) ? r.customer : others }));
     const closed = [...home.closed_months].sort((a, b) => a.month.localeCompare(b.month));
     // 8-nov (revisión como cliente): los nombres largos se cortaban en el eje; en el gráfico va la parte antes del guion.
     const catLabel = (c: string) => {
@@ -196,6 +246,7 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
           { id: "paid_month", name: t("owner.dashboard.f.paidMonth"), description: "Month the invoice was paid, YYYY-MM", ...txt },
           { id: "paid_month_name", name: t("owner.dashboard.f.paidMonthName"), description: "Month name the invoice was paid, e.g. August (the year is in the year field)", ...txt },
           { id: "year", name: t("owner.dashboard.f.year"), description: "Year of the invoice (paid, or due if unpaid)", ...yr },
+          { id: "customer_group", name: t("owner.dashboard.f.customer"), description: "Customer name for the 10 that billed the most; the rest grouped as Others", ...txt },
           { id: "status_label", name: t("owner.dashboard.f.status"), description: "Status as shown on screen (filter with status)", ...txt },
           { id: "due_label", name: t("owner.dashboard.f.dueMonth"), description: "Due month as shown on screen", ...txt },
         ] },
@@ -236,6 +287,7 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
 
   const LIST_TRACKS = Math.min(20, Math.max(8, Math.ceil(((invoices?.filter((i) => i.status !== "DRAFT").length ?? 8) + 2) * 28 / 22) + 1));
   const TRACKS = 33 + LIST_TRACKS;
+  const MANY = new Set((invoices ?? []).filter((i) => i.status !== "DRAFT").map((i) => i.customer?.name)).size > BUTTONS_UP_TO;
   // El tablero ya armado (el dueño no tiene que construir nada); en modo vista: filtra y cruza, no edita.
   // 8-nov (rediseño, revisión de Jose como usuario externo): arriba lo que necesita atención ("Quién me debe" y los
   // indicadores con color), luego la historia (ingresos contra costos, costos por categoría, cobrado por mes) y al final la
@@ -256,7 +308,11 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
         layout: { minWidth: 320, rowHeight: 22 },   // sin minWidth el lienzo mide 720 px y en el celular se sale
         widgets: {
           // 8-nov (revisión como cliente): sin título ni "Filtrar por: Cliente" (los nombres ya dicen qué son), botones redondos.
-          customers: { type: "button-filter", dataMapping: { value: [{ id: "invoices.customer" }] },
+          // Con muchos clientes, nuestro buscador (el filtro de lista de AG Studio es una lista vertical: no cabe aquí).
+          customers: MANY ? {
+            type: "contabu-customer-search",
+            dataMapping: { customer: [{ id: "invoices.customer" }], billed: [{ id: "invoices.amount", aggregation: "sum" }] },
+          } : { type: "button-filter", dataMapping: { value: [{ id: "invoices.customer" }] },
                        format: { title: { enabled: false }, subtitle: { enabled: false }, caption: { enabled: false },
                                  style: { selection: { type: "single" }, dimensions: { height: 34 },
                                           defaultItem: { backgroundColor: "#FFFFFF", borderEnabled: true, borderColor: "#CBD5E1", borderRadius: 999, color: "#334155" },
@@ -285,7 +341,7 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
           },
           byCustomer: {
             type: "column-chart-grouped",
-            dataMapping: { categoryKey: [{ id: "invoices.customer" }],
+            dataMapping: { categoryKey: [{ id: "invoices.customer_group" }],
                            valueKey: [{ id: "invoices.collected", aggregation: "sum" }, { id: "invoices.open", aggregation: "sum" },
                                       { id: "invoices.overdue", aggregation: "sum" }], tooltipKey: [] },
             format: chart("byCustomer"),
@@ -315,7 +371,7 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
       // 8-nov: el chat siempre abierto (plegado, el dueño lo perdía: no se ve dónde se vuelve a abrir).
       panels: { filters: { collapsed: true }, ai: { collapsed: false } },
     } as unknown as AgReportState;
-  }, [t, LIST_TRACKS]);
+  }, [t, LIST_TRACKS, MANY]);
   const widgets = useMemo(() => contabuWidgets(), [es]);   // los nombres del menú de edición, en el idioma de la pantalla
   // 8-nov: sin "(sum)" / "(suma)" en las leyendas y los tooltips: todas las cifras del tablero son sumas.
   const localeText = useMemo(() => ({ ...(es ? AG_STUDIO_LOCALE_ES_ES : {}), aggregationSumFieldName: "${name}",
@@ -325,19 +381,10 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
   if (!data) return <div className="flex justify-center py-16"><span className="loading loading-spinner loading-lg text-brand-green" /></div>;
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="flex-1 min-w-[16rem] text-sm text-slate-600">{t("owner.dashboard.intro")}</p>
-        {canAsk && (
-          <button onClick={() => setAsking((a) => !a)}
-                  className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-semibold ${asking ? "border border-[#0070BA] text-[#0070BA] bg-white" : "text-[#003087] bg-[#FFC439] hover:bg-[#f2ba36]"}`}>
-            {asking ? t("owner.dashboard.ai.close") : t("owner.dashboard.ai.open")}
-          </button>
-        )}
-      </div>
-      {asking && <p className="text-[11px] text-slate-500">{t("owner.dashboard.ai.rules")}</p>}
+      <p className="text-sm text-slate-600">{t("owner.dashboard.intro")}</p>
       {/* 8-nov (revisión como cliente): antes quedaba al fondo de la página, lejos del chat; ahora arriba, sobre el chat. */}
-      {last && (
-        <div className="ml-auto w-full max-w-sm">
+      {asking && last && (
+        <div className="contabu-trace ml-auto w-full max-w-sm">
           <AiTrace ai={{ model: modelLabel(last.model), latency_ms: last.ms, tokens: last.tokens, cost_usd: last.usd }}
                    steps={last.steps.map((x): TraceStep =>
                      x.kind === "model"
@@ -356,9 +403,9 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
       {/* `key`: AG Studio fija el idioma al crearse; al cambiarlo se vuelve a crear. El chat de AG Studio solo existe en
           el modo de edición: con el asistente abierto se pasa a ese modo, pero solo con el panel del chat. */}
       <style>{STUDIO_CSS}</style>
-      <div className="contabu-studio overflow-hidden" style={{ ["--contabu-welcome" as string]: JSON.stringify(t("owner.dashboard.ai.welcome")).replace(/\\n/g, "\\A "), height: NARROW ? MOBILE_TRACKS * 22 + 60 + LIST_TRACKS * 22 : asking ? "calc(100vh - 9rem)" : TRACKS * 22 + 90, minHeight: 560 }}>
+      <div className={`contabu-studio overflow-hidden${asking ? " asking" : ""}`} style={{ ["--contabu-welcome" as string]: JSON.stringify(t("owner.dashboard.ai.welcome")).replace(/\\n/g, "\\A "), height: NARROW ? MOBILE_TRACKS * 22 + 60 + LIST_TRACKS * 22 : TRACKS * 22 + 90, minHeight: 560 }}>
         <AgStudioProvider licenseKey={LICENSE} modules={[AgStudioAiModule]}>
-          <AgStudio key={es ? "es" : "en"} data={data as never} initialState={initialState} mode={asking ? "edit" : "view"} theme={theme} widgets={widgets}
+          <AgStudio ref={studioRef} key={es ? "es" : "en"} data={data as never} initialState={initialState} mode={asking ? "edit" : "view"} theme={theme} widgets={widgets}
                     localeText={localeText} ai={canAsk ? ai : undefined} aiText={STUDIO_AI_TEXT} aiToolDisplay={tools}
                     responsiveLayoutBreakpoints={RESPONSIVE}
                     panels={{ edit: { left: [], right: ["ai"] }, view: { left: [], right: [] } }}
@@ -366,6 +413,24 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
         </AgStudioProvider>
       </div>
       <p className="text-[11px] text-slate-400">{t("owner.dashboard.note")}</p>
+      {canAsk && (
+        <button onClick={() => setAsking((a) => !a)} aria-expanded={asking}
+                aria-label={asking ? t("owner.dashboard.ai.close") : t("owner.dashboard.ai.open")}
+                title={asking ? t("owner.dashboard.ai.close") : t("owner.dashboard.ai.open")}
+                className={`fixed bottom-5 right-5 z-[61] flex h-14 items-center gap-2 rounded-full shadow-lg transition-all
+                            ${asking ? "w-14 justify-center bg-[#003087] text-white" : "px-5 bg-[#FFC439] text-[#003087] hover:bg-[#f2ba36]"}`}>
+          {asking ? (
+            <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          ) : (
+            <>
+              <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /><path d="M8.5 11h.01M12 11h.01M15.5 11h.01" />
+              </svg>
+              <span className="hidden sm:inline text-sm font-semibold">{t("owner.dashboard.ai.fab")}</span>
+            </>
+          )}
+        </button>
+      )}
     </div>
   );
 }

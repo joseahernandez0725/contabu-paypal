@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import i18n from "../../i18n";
 import { AgLoadingOverlay, createWidgets } from "ag-studio-react";
@@ -62,6 +63,9 @@ function useCountUp(target: number) {
 
 // ── Quién me debe ────────────────────────────────────────────────────────────────────────────────────────────────────
 
+// 8-nov (muchos clientes): a la vista, los 5 que más urge cobrar (lo vencido primero); el resto, en Cobros.
+const OWES_SHOWN = 5;
+
 function WhoOwes(params: any) {
   const { t, i18n } = useTranslation();
   const rows = useRows(params);
@@ -91,7 +95,7 @@ function WhoOwes(params: any) {
         </div>
       ) : (
         <ul className="mt-2 flex-1 overflow-auto space-y-2 pr-1">
-          {owing.map((r) => {
+          {owing.slice(0, OWES_SHOWN).map((r) => {
             const owed = r.open + r.overdue;
             const late = r.overdue > 0;
             return (
@@ -124,6 +128,14 @@ function WhoOwes(params: any) {
               </li>
             );
           })}
+          {owing.length > OWES_SHOWN && (
+            <li>
+              <button onClick={() => window.dispatchEvent(new CustomEvent(OWNER_VIEW_EVENT, { detail: "invoices" }))}
+                      className="w-full rounded-lg border border-dashed border-slate-300 py-1.5 text-xs font-semibold text-[#0070BA] hover:bg-sky-50">
+                {t("owner.dashboard.owes.all", { count: owing.length })}
+              </button>
+            </li>
+          )}
         </ul>
       )}
     </div>
@@ -173,6 +185,86 @@ function Kpi(params: any) {
   );
 }
 
+// ── Buscar cliente (8-nov, con muchos clientes) ──────────────────────────────────────────────────────────────────────
+// Con más de 6 clientes, los botones no caben y el filtro de lista de AG Studio es una lista vertical (en la franja de arriba
+// se ve una sola fila). Este widget es un buscador: se escribe, se elige un cliente de la lista (los que más facturaron
+// primero) y todo el tablero se filtra con el filtro cruzado de AG Studio. La lista se dibuja fuera del widget (portal),
+// para que no la corte el borde de la franja.
+
+function CustomerSearch(params: any) {
+  const { t, i18n } = useTranslation();
+  const rows = useRows(params);
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement | null>(null);
+  const most = useRef(0);   // cuántos clientes hay en total (con el filtro puesto, la consulta trae solo uno)
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const place = () => box.current && setRect(box.current.getBoundingClientRect());
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => { window.removeEventListener("scroll", place, true); window.removeEventListener("resize", place); };
+  }, [open]);
+  if (!rows) return <AgLoadingOverlay />;
+  const all = rows.map((r) => ({ customer: String(r.customer), billed: Number(r.billed) || 0 }))
+    .sort((a, b) => b.billed - a.billed);
+  most.current = Math.max(most.current, all.length);
+  // El cliente elegido se lee de AG Studio (no de un estado propio): si el widget se vuelve a crear (al abrir el chat, por
+  // ejemplo) o si otro widget cambia el filtro, la etiqueta sigue diciendo la verdad.
+  const custField = (params.dataMapping?.customer ?? [])[0];
+  const nameOf = (f: any) => { try { return params.widgetApi.getFieldName(f); } catch { return null; } };
+  const sel = (params.widgetApi.getCrossFilterSelections?.() ?? [])
+    .find((x: any) => x.type === "value" && x.values?.length && (!custField || nameOf(x.field) === nameOf(custField)));
+  const picked: string | null = sel ? String(sel.values[0]) : null;
+  const norm = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const words = norm(q).split(/\s+/).filter(Boolean);   // cada palabra, en cualquier orden ("bright den")
+  const hits = all.filter((r) => words.every((w) => norm(r.customer).includes(w))).slice(0, 50);
+  const toggle = (customer: string) => {
+    const f = (params.dataMapping?.customer ?? [])[0];
+    if (f) params.widgetApi.toggleCrossFilter({ type: "value", field: f, value: customer, group: 0 });
+  };
+  const choose = (customer: string) => {
+    if (picked && picked !== customer) toggle(picked);   // quita el anterior
+    if (picked !== customer) toggle(customer);
+    setQ(""); setOpen(false);
+  };
+  const clear = () => params.widgetApi.resetCrossFilter();
+  return (
+    <div className="h-full flex items-center gap-3 px-3 font-sans">
+      <div ref={box} className="relative w-full max-w-md">
+        <svg viewBox="0 0 24 24" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+        <input value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
+               onBlur={() => setTimeout(() => setOpen(false), 150)}
+               onKeyDown={(e) => { if (e.key === "Enter" && hits[0]) choose(hits[0].customer); if (e.key === "Escape") setOpen(false); }}
+               placeholder={t("owner.dashboard.search.placeholder", { count: most.current })} aria-label={t("owner.dashboard.search.label")}
+               className="h-9 w-full rounded-full border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-800 outline-none focus:border-[#0070BA] focus:ring-2 focus:ring-sky-100" />
+      </div>
+      {picked && (
+        <span className="flex shrink-0 items-center gap-1 rounded-full bg-[#0070BA] py-1 pl-3 pr-1 text-sm font-medium text-white">
+          {picked}
+          <button onClick={clear} aria-label={t("owner.dashboard.search.clear")} className="grid size-6 place-items-center rounded-full hover:bg-white/20">×</button>
+        </span>
+      )}
+      {open && rect && createPortal(
+        <ul role="listbox" style={{ position: "fixed", left: rect.left, top: rect.bottom + 4, width: rect.width, zIndex: 70 }}
+            className="max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-lg font-sans">
+          {hits.length === 0
+            ? <li className="px-3 py-2 text-slate-500">{t("owner.dashboard.search.none")}</li>
+            : hits.map((r) => (
+              <li key={r.customer} role="option" aria-selected={r.customer === picked}
+                  onMouseDown={(e) => { e.preventDefault(); choose(r.customer); }}
+                  className={`flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-sky-50 ${r.customer === picked ? "font-semibold text-[#0070BA]" : "text-slate-800"}`}>
+                <span className="truncate">{r.customer}</span>
+                <span className="ms-auto shrink-0 tabular-nums text-xs text-slate-500">{usd(r.billed, i18n.language)}</span>
+              </li>
+            ))}
+        </ul>, document.body)}
+    </div>
+  );
+}
+
 // ── Registro ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 const noEdit = (params: any) => params.createDefaults({ dataMappingItems: [] });
@@ -192,6 +284,16 @@ export function contabuWidgets(): any {
         featureConfig: { crossFilter: { supportsHighlight: false } },
         defaultSize: { width: 400, height: 300 }, minSize: { width: 240, height: 160 },
         ai: { description: "Who owes the business money: each customer with the amount owed, how much is overdue and the days late. Computed by the code." },
+      },
+      {
+        id: "contabu-customer-search", label: i18n.t("owner.dashboard.search.label"), comp: CustomerSearch, form: noEdit, toolbar: [],
+        dataMapping: {
+          customer: { type: "field", supportedRoles: ["category"], requires: { cardinality: "many" }, required: true },
+          billed: { type: "field", supportedRoles: ["numeric"], requires: { per: "dataMapping.customer", cardinality: "one" } },
+        },
+        featureConfig: { crossFilter: { supportsHighlight: false } },
+        defaultSize: { width: 400, height: 60 }, minSize: { width: 200, height: 48 },
+        ai: { description: "Search box to filter the whole dashboard by one customer." },
       },
       {
         id: "contabu-kpi", label: i18n.t("owner.dashboard.w.kpi"), comp: Kpi, form: noEdit, toolbar: [],

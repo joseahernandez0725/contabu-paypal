@@ -2628,7 +2628,8 @@
           "checkNone": "La respuesta no tiene cifras que revisar"
         },
         "capReached": "Llegaste al límite de preguntas al asistente por hoy. El tablero sigue funcionando; puedes volver a preguntar mañana.",
-        "welcome": "¡Hola! Leo este tablero y te ayudo a cobrar.\nPregúntame a quién recordarle primero, quiénes son tus mejores clientes o cuánto gastaste en un mes. Nunca envío nada y cada cifra sale de tus datos."
+        "welcome": "¡Hola! Leo este tablero y te ayudo a cobrar.\nPregúntame a quién recordarle primero, quiénes son tus mejores clientes o cuánto gastaste en un mes. Nunca envío nada y cada cifra sale de tus datos.",
+        "fab": "Pregúntale al asistente"
       },
       "owes": {
         "total": "{{amount}} por cobrar",
@@ -2637,7 +2638,8 @@
         "late_one": "{{count}} día de atraso",
         "late_other": "{{count}} días de atraso",
         "notDue": "Aún no vence",
-        "remind": "Recordar"
+        "remind": "Recordar",
+        "all": "Ver los {{count}} en Cobros"
       },
       "kpi": {
         "openNone": "Nada pendiente",
@@ -2653,6 +2655,13 @@
         "Refunded": "Devuelta",
         "Cancelled": "Cancelada",
         "Draft": "Borrador"
+      },
+      "others": "Otros",
+      "search": {
+        "placeholder": "Busca entre {{count}} clientes…",
+        "label": "Buscar cliente",
+        "clear": "Quitar el filtro de cliente",
+        "none": "Ningún cliente coincide"
       }
     }
   }
