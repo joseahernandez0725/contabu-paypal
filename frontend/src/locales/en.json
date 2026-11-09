@@ -2441,7 +2441,8 @@
         "fee": "PayPal fee",
         "paidMonthName": "Month paid",
         "monthName": "Month name",
-        "year": "Year"
+        "year": "Year",
+        "daysOverdue": "Days overdue"
       },
       "w": {
         "collected": "Collected with PayPal",
@@ -2450,9 +2451,11 @@
         "contractorsPaid": "Paid to contractors",
         "byCustomer": "Invoices by customer",
         "byStatus": "Invoices by status",
-        "months": "Income and costs by closed month",
-        "costs": "Costs and expenses by category",
-        "list": "Your invoices"
+        "months": "Income vs. costs by closed month",
+        "costs": "Top costs by category",
+        "list": "Your invoices",
+        "whoOwes": "Who owes me",
+        "filterCustomers": "Customers"
       },
       "ai": {
         "open": "Ask the assistant",
@@ -2488,6 +2491,20 @@
           "checkBad": "The code could not find {{figures}} in the data: the answer was hidden",
           "checkNone": "The answer has no figures to check"
         }
+      },
+      "owes": {
+        "total": "{{amount}} to collect",
+        "none": "Everyone has paid",
+        "noneHint": "No customer owes you money right now.",
+        "late_one": "{{count}} day late",
+        "late_other": "{{count}} days late",
+        "notDue": "Not due yet",
+        "remind": "Remind"
+      },
+      "kpi": {
+        "openNone": "Nothing waiting",
+        "overdueNone": "Nothing overdue ✓",
+        "overdueSome": "Needs a reminder"
       }
     }
   }

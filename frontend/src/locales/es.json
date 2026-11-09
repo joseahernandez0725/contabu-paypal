@@ -2570,7 +2570,8 @@
         "fee": "Comisión de PayPal",
         "paidMonthName": "Mes de pago (nombre)",
         "monthName": "Nombre del mes",
-        "year": "Año"
+        "year": "Año",
+        "daysOverdue": "Días de atraso"
       },
       "w": {
         "collected": "Cobrado con PayPal",
@@ -2579,9 +2580,11 @@
         "contractorsPaid": "Pagado a contratistas",
         "byCustomer": "Facturas por cliente",
         "byStatus": "Facturas por estado",
-        "months": "Ingresos y costos por mes cerrado",
-        "costs": "Costos y gastos por categoría",
-        "list": "Tus facturas"
+        "months": "Ingresos contra costos por mes cerrado",
+        "costs": "Mayores costos por categoría",
+        "list": "Tus facturas",
+        "whoOwes": "Quién me debe",
+        "filterCustomers": "Clientes"
       },
       "ai": {
         "open": "Preguntarle al asistente",
@@ -2617,6 +2620,20 @@
           "checkBad": "El código no encontró {{figures}} en los datos: la respuesta se ocultó",
           "checkNone": "La respuesta no tiene cifras que revisar"
         }
+      },
+      "owes": {
+        "total": "{{amount}} por cobrar",
+        "none": "Todos te pagaron",
+        "noneHint": "Ningún cliente te debe dinero ahora.",
+        "late_one": "{{count}} día de atraso",
+        "late_other": "{{count}} días de atraso",
+        "notDue": "Aún no vence",
+        "remind": "Recordar"
+      },
+      "kpi": {
+        "openNone": "Nada pendiente",
+        "overdueNone": "Nada vencido ✓",
+        "overdueSome": "Necesita un recordatorio"
       }
     }
   }
