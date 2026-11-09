@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { addCustomer, cancelInvoice, createInvoice, createSeries, discardInvoice, getCustomers, getInvoiceProfile, getInvoices,
          getNextInvoiceNumber,
@@ -72,6 +72,15 @@ export default function OwnerInvoices({ preview, businessName, autoOpen = 0 }: {
   const [suggested, setSuggested] = useState<number[]>([]);   // clientes que nombró el dictado (si dudó entre varios)
   useEffect(() => { if (autoOpen > 0 && !preview) setOpen(true); }, [autoOpen, preview]);   // "+ Nueva factura" del Resumen
   const [busy, setBusy] = useState(false);
+  // 8-nov (Jose): las tarjetas de arriba filtran la lista. Otro clic en la misma, o "Ver todas", la quita.
+  const [show, setShow] = useState<CardFilter | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  // En el celular las tarjetas ocupan la pantalla: al elegir una, la página baja hasta la lista para que se vea el cambio.
+  const pick = (f: CardFilter) => {
+    const next = show === f ? null : f;
+    setShow(next);
+    if (next && window.innerWidth < 640) setTimeout(() => listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -128,15 +137,19 @@ export default function OwnerInvoices({ preview, businessName, autoOpen = 0 }: {
 
   if (!v) return err ? <p className="text-sm text-rose-600">{err}</p> : <div className="flex justify-center py-16"><span className="loading loading-spinner loading-lg text-brand-green" /></div>;
   const blocked = preview || !v.paypal_connected;
+  const shown = show ? v.invoices.filter((inv) => matches(inv, show)) : v.invoices;
 
   return (
     <div className="space-y-3">
       {/* Las cifras de Cobros (calculadas por SQL en el backend) como tarjetas, y las acciones a la vista. */}
       <div className="grid gap-3 sm:grid-cols-3">
-        <Kpi label={t("owner.invoices.outstandingTitle")} value={money(Number(v.summary.outstanding))} accent="border-t-sky-500" />
+        <Kpi label={t("owner.invoices.outstandingTitle")} value={money(Number(v.summary.outstanding))} accent="border-t-sky-500"
+             active={show === "outstanding"} onClick={() => pick("outstanding")} />
         <Kpi label={t("owner.invoices.overdueTitle")} value={String(v.summary.overdue)} accent={v.summary.overdue ? "border-t-rose-500" : "border-t-slate-300"}
-             tone={v.summary.overdue ? "text-rose-700" : "text-slate-900"} />
-        <Kpi label={t("owner.invoices.collectedTitle")} value={money(Number(v.summary.collected_this_year))} accent="border-t-emerald-500" tone="text-emerald-700" tour="pp-collected" />
+             tone={v.summary.overdue ? "text-rose-700" : "text-slate-900"}
+             active={show === "overdue"} onClick={() => pick("overdue")} />
+        <Kpi label={t("owner.invoices.collectedTitle")} value={money(Number(v.summary.collected_this_year))} accent="border-t-emerald-500" tone="text-emerald-700" tour="pp-collected"
+             active={show === "collected"} onClick={() => pick("collected")} />
       </div>
       {!open && (
         <div className="flex flex-wrap items-center gap-2">
@@ -311,16 +324,28 @@ export default function OwnerInvoices({ preview, businessName, autoOpen = 0 }: {
         </DetailCard>
       )}
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-3 py-2 border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t("owner.invoices.listTitle")}</div>
-        {v.invoices.length === 0 ? (
+      <div ref={listRef} className="scroll-mt-4 bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t("owner.invoices.listTitle")}</span>
+          {show && (
+            <>
+              <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-[#0070BA] ring-1 ring-sky-200">
+                {t(`owner.invoices.showing.${show}`, { count: shown.length })}
+              </span>
+              <button onClick={() => setShow(null)} className="ms-auto text-xs font-semibold text-[#0070BA] hover:underline">{t("owner.invoices.showAll")}</button>
+            </>
+          )}
+        </div>
+        {show && shown.length === 0 ? (
+          <p className="px-3 py-6 text-center text-sm text-slate-500">{t(`owner.invoices.showingNone.${show}`)}</p>
+        ) : v.invoices.length === 0 ? (
           <div className="px-3 py-8 text-center">
             <p className="text-sm text-slate-500">{t("owner.invoices.none")}</p>
             <p className="text-xs text-slate-400 mt-1">{t("owner.invoices.noneHint")}</p>
           </div>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {v.invoices.map((inv) => <Row key={inv.id} inv={inv} day={day} preview={preview} busy={busy} autoQr={qrFor === inv.id}
+            {shown.map((inv) => <Row key={inv.id} inv={inv} day={day} preview={preview} busy={busy} autoQr={qrFor === inv.id}
                                          confirming={confirmSend === inv.id} onAskSend={() => setConfirmSend(inv.id)}
                                          onCancelSend={() => setConfirmSend(null)}
                                          onSend={() => void run(() => sendInvoice(inv.id), (x) => { setV(x); setConfirmSend(null); })}
@@ -491,13 +516,27 @@ function RefundOffline({ inv, busy, onView }: { inv: OwnerInvoice; busy: boolean
   );
 }
 
-function Kpi({ label, value, accent, tone = "text-slate-900", tour }: { label: string; value: string; accent: string; tone?: string; tour?: string }) {
+function Kpi({ label, value, accent, tone = "text-slate-900", tour, active = false, onClick }: {
+  label: string; value: string; accent: string; tone?: string; tour?: string; active?: boolean; onClick?: () => void;
+}) {
   return (
-    <div data-tour={tour} className={`bg-white rounded-xl border border-slate-200 border-t-4 ${accent} px-4 py-3`}>
+    <button type="button" data-tour={tour} onClick={onClick} aria-pressed={active}
+            className={`text-left bg-white rounded-xl border border-t-4 ${accent} px-4 py-3 transition hover:shadow-sm
+                        ${active ? "border-[#0070BA] ring-2 ring-sky-200" : "border-slate-200 hover:border-slate-300"}`}>
       <div className="text-xs text-slate-500">{label}</div>
       <div className={`text-2xl font-semibold mt-0.5 ${tone}`}>{value}</div>
-    </div>
+    </button>
   );
+}
+
+// Las tarjetas como filtros (8-nov). Las mismas reglas que las cifras del backend (`invoices.py`): por cobrar = enviadas sin
+// cobrar del todo; vencidas = esas, pasada la fecha; cobrado = pagadas (por PayPal o fuera) en el año en curso.
+type CardFilter = "outstanding" | "overdue" | "collected";
+function matches(inv: OwnerInvoice, f: CardFilter): boolean {
+  if (f === "outstanding") return OPEN.includes(inv.status);
+  if (f === "overdue") return OPEN.includes(inv.status) && !!inv.overdue;
+  return [...PAID_ANY, "PARTIALLY_REFUNDED"].includes(inv.status) && !!inv.paid_at
+    && new Date(inv.paid_at).getFullYear() === new Date().getFullYear();
 }
 
 // Comisión de PayPal por factura en EE. UU. (✅ paypal.com/us/business/paypal-business-fees, 1-nov-2026): 3.49% + $0.49.

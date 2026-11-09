@@ -1901,7 +1901,21 @@
       "numberPh": "El que sigue en PayPal",
       "reference": "Orden de compra (opcional)",
       "referencePh": "La orden de compra (PO) del cliente",
-      "referenceShort": "Orden de compra"
+      "referenceShort": "Orden de compra",
+      "showAll": "Ver todas",
+      "showing": {
+        "outstanding_one": "Por cobrar: {{count}} factura",
+        "outstanding_other": "Por cobrar: {{count}} facturas",
+        "overdue_one": "Vencidas: {{count}} factura",
+        "overdue_other": "Vencidas: {{count}} facturas",
+        "collected_one": "Cobradas este año: {{count}} factura",
+        "collected_other": "Cobradas este año: {{count}} facturas"
+      },
+      "showingNone": {
+        "outstanding": "No hay nada por cobrar ahora.",
+        "overdue": "No hay facturas vencidas ✓",
+        "collected": "Todavía no hay cobros este año."
+      }
     },
     "preview": {
       "title": "Vista previa:",

@@ -1771,7 +1771,21 @@
       "numberPh": "PayPal's next one",
       "reference": "PO number (optional)",
       "referencePh": "The customer's purchase order",
-      "referenceShort": "PO"
+      "referenceShort": "PO",
+      "showAll": "Show all",
+      "showing": {
+        "outstanding_one": "Outstanding: {{count}} invoice",
+        "outstanding_other": "Outstanding: {{count}} invoices",
+        "overdue_one": "Overdue: {{count}} invoice",
+        "overdue_other": "Overdue: {{count}} invoices",
+        "collected_one": "Collected this year: {{count}} invoice",
+        "collected_other": "Collected this year: {{count}} invoices"
+      },
+      "showingNone": {
+        "outstanding": "Nothing to collect right now.",
+        "overdue": "No overdue invoices ✓",
+        "collected": "Nothing collected this year yet."
+      }
     },
     "preview": {
       "title": "Preview:",
