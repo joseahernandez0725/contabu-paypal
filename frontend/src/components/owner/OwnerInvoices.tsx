@@ -10,6 +10,7 @@ import { addCustomer, cancelInvoice, createInvoice, createSeries, discardInvoice
          type PaymentTerm, type SeriesUnit } from "../../api";
 import ConnectPayPal from "./ConnectPayPal";
 import InvoiceCollect, { OFFLINE_METHODS, localToday } from "./InvoiceCollect";
+import { inTour } from "../../demo";
 import OwnerDisputes from "./OwnerDisputes";
 import { formatPhone } from "./InvoiceProfileCard";
 import SeriesList, { everyText } from "./SeriesList";
@@ -383,7 +384,10 @@ function Row({ inv, day, preview, busy, confirming, autoQr = false, remind = 0, 
     const off = setTimeout(() => setSpot(false), 3200);
     return () => clearTimeout(off);
   }, [remind]);
-  const canCollect = OPEN.includes(inv.status) && !preview;
+  // 10-nov (Jose): en la visita guiada "Cobrar" también se ve (el juez ve la opción sin vincular nada), pero el panel
+  // abre en solo lectura: nada se envía ni corre la IA. En la vista previa del bookkeeper sigue oculto.
+  const touring = inTour();
+  const canCollect = OPEN.includes(inv.status) && (!preview || touring);
   const key = inv.overdue ? "OVERDUE" : inv.status;
   const name = inv.customer?.name ?? "—";
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "·";
@@ -450,7 +454,7 @@ function Row({ inv, day, preview, busy, confirming, autoQr = false, remind = 0, 
       {canCollect && inv.reminder_count > 0 && !collecting && (
         <span className="basis-full text-end text-[11px] text-slate-500">{t("owner.collect.remindedShort", { count: inv.reminder_count })}</span>
       )}
-      {canCollect && collecting && <InvoiceCollect inv={inv} busy={busy} onView={onView} autoQr={autoQr} />}
+      {canCollect && collecting && <InvoiceCollect inv={inv} busy={busy} onView={onView} autoQr={autoQr} readOnly={preview} />}
       {inv.offline && (
         <span className={`basis-full text-end text-[11px] ${inv.offline.in_bank ? "text-emerald-700" : "text-amber-700"}`}>
           {t(`owner.offline.line.${inv.offline.kind}`, { method: t(`owner.offline.methods.${inv.offline.method}`).toLowerCase(), date: day(inv.offline.day) })}
@@ -458,7 +462,7 @@ function Row({ inv, day, preview, busy, confirming, autoQr = false, remind = 0, 
         </span>
       )}
       {!preview && (PAID_ANY.includes(inv.status) || inv.status === "PARTIALLY_REFUNDED") && <RefundOffline inv={inv} busy={busy} onView={onView} />}
-      {canCollect && inv.status !== "PARTIALLY_PAID" && !collecting && <CancelInvoice inv={inv} busy={busy} onView={onView} />}
+      {canCollect && !preview && inv.status !== "PARTIALLY_PAID" && !collecting && <CancelInvoice inv={inv} busy={busy} onView={onView} />}
     </li>
   );
 }

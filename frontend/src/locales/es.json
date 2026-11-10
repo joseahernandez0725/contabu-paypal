@@ -2226,6 +2226,7 @@
     },
     "collect": {
       "open": "Cobrar",
+      "tourOnly": "En la visita no se envía nada y no corre la IA. Para cobrar, entra con Google y el código de acceso: ahí usas tu propio libro.",
       "close": "Cerrar",
       "paypalTitle": "Recordatorio oficial de PayPal",
       "paypalHint": "PayPal envía al cliente su correo estándar de recordatorio, con el enlace de pago.",

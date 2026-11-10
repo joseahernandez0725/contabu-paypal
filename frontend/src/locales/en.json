@@ -2096,6 +2096,7 @@
     },
     "collect": {
       "open": "Collect",
+      "tourOnly": "The tour sends nothing and does not run the AI. To collect, sign in with Google and the access code: you get your own book.",
       "close": "Close",
       "paypalTitle": "Official PayPal reminder",
       "paypalHint": "PayPal emails the customer its standard reminder, with the payment link.",

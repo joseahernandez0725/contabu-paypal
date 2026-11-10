@@ -374,7 +374,7 @@ export default function OwnerDashboard({ home, openAsk = 0, visible = true }: { 
       panels: { filters: { collapsed: true }, ai: { collapsed: false } },
     } as unknown as AgReportState;
   }, [t, LIST_TRACKS, MANY]);
-  const widgets = useMemo(() => contabuWidgets({ canRemind: !home.preview && !inTour() }), [es, home.preview]);   // los nombres del menú de edición, en el idioma de la pantalla
+  const widgets = useMemo(() => contabuWidgets({ canRemind: !home.preview || inTour() }), [es, home.preview]);   // los nombres del menú de edición, en el idioma de la pantalla
   // 8-nov: sin "(sum)" / "(suma)" en las leyendas y los tooltips: todas las cifras del tablero son sumas.
   const localeText = useMemo(() => ({ ...(es ? AG_STUDIO_LOCALE_ES_ES : {}), aggregationSumFieldName: "${name}",
                                        aggregationMaxFieldName: "${name}" }), [es]);

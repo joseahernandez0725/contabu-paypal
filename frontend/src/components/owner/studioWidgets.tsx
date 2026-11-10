@@ -337,7 +337,7 @@ const noEdit = (params: any) => params.createDefaults({ dataMappingItems: [] });
 export function contabuWidgets({ canRemind = false }: { canRemind?: boolean } = {}): any {
   // `as any`: el registro de tipos de AG Studio no conoce nuestros ids de widget (se validan en tiempo de ejecución).
   return createWidgets({
-    // La tabla nativa, con "Recordar" en la columna marcada (`context.remind`); en la visita y en la vista previa, no.
+    // La tabla nativa, con "Recordar" en la columna marcada (`context.remind`); en la vista previa del bookkeeper, no (en la visita sí: solo lleva a la factura).
     overrides: canRemind ? [{
       id: "grid",
       options: {

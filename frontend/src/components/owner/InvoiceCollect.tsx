@@ -17,8 +17,10 @@ const REMIND_EVERY_MS = 24 * 3600 * 1000;
 export const OFFLINE_METHODS: OfflineMethod[] = ["CASH", "CHECK", "BANK_TRANSFER", "WIRE_TRANSFER", "OTHER"];
 export const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
-export default function InvoiceCollect({ inv, busy, onView, autoQr = false }: {
-  inv: OwnerInvoice; busy: boolean; onView: (v: InvoicesView) => void; autoQr?: boolean;
+/** `readOnly` (10-nov, Jose): en la visita guiada el panel se ve entero (el juez ve con qué se cobra) pero nada avanza:
+ *  ni se envía, ni corre la IA, ni se pide el QR. Los botones quedan apagados y una línea dice dónde se prueba. */
+export default function InvoiceCollect({ inv, busy, onView, autoQr = false, readOnly = false }: {
+  inv: OwnerInvoice; busy: boolean; onView: (v: InvoicesView) => void; autoQr?: boolean; readOnly?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const lang = i18n.language?.startsWith("es") ? "es" : "en";
@@ -38,7 +40,7 @@ export default function InvoiceCollect({ inv, busy, onView, autoQr = false }: {
   const when = (iso: string) => new Date(iso).toLocaleString(lang, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
   const nextAt = inv.last_reminder_at ? new Date(new Date(inv.last_reminder_at).getTime() + REMIND_EVERY_MS) : null;
   const waiting = nextAt !== null && nextAt.getTime() > Date.now();
-  const off = busy || working !== "";
+  const off = busy || working !== "" || readOnly;
 
   async function go<T>(what: "remind" | "draft" | "qr" | "offline" | "stop", fn: () => Promise<T>, after: (x: T) => void) {
     setWorking(what); setErr(null);
@@ -59,6 +61,9 @@ export default function InvoiceCollect({ inv, busy, onView, autoQr = false }: {
 
   return (
     <div className="basis-full mt-1 rounded-lg border border-slate-200 bg-slate-50/60 p-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4 text-sm">
+      {readOnly && (
+        <p role="status" className="md:col-span-2 xl:col-span-4 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">{t("owner.collect.tourOnly")}</p>
+      )}
       {/* 1. Recordatorio oficial de PayPal */}
       <section className="min-w-0 rounded-md bg-white border border-slate-200 p-3">
         <h4 className="font-semibold text-slate-900">{t("owner.collect.paypalTitle")}</h4>
