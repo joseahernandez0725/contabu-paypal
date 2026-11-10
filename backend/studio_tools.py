@@ -20,7 +20,8 @@ from sqlmodel import Session, select
 
 import month_close
 from invoices import OPEN, PAID_ANY, paid_so_far_subquery
-from models import Company, Contractor, ContractorPayment, Invoice, InvoiceCustomer
+from models import Company, Contractor, ContractorPayment, Invoice, InvoiceCustomer, Transaction
+from reports import signed_amount
 
 _MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November",
            "December"]
@@ -55,7 +56,14 @@ def customer_totals(session: Session, company: Company) -> dict:
         .join(sofar, sofar.c.invoice_id == Invoice.id, isouter=True)
         .where(Invoice.company_id == company.id).where(Invoice.status != "DRAFT")
     ).one()
+    import invoices as inv_mod   # aquí: el historial de pago (SQL) que ya decide el tono de los recordatorios
+    names = {c.id: c.name for c in session.exec(select(InvoiceCustomer).where(InvoiceCustomer.company_id == company.id)).all()}
+    habits = sorted(({"customer": names.get(cid, "—"), "paid_invoices": h["paid"], "paid_after_due_date": h["late"],
+                      "habit": h["kind"]} for cid, h in inv_mod.payer_history(session, company.id).items()),
+                    key=lambda h: (-h["paid_after_due_date"], h["customer"]))
     return {
+        # on_time = nunca tarde · sometimes_late = hasta la mitad tarde · often_late = más de la mitad tarde
+        "payment_habits_latest_payers_first": habits,
         "customers_ordered_by_collected": [
             {"rank_by_collected": i + 1, "customer": r[0], "invoices": int(r[1]), "collected_usd": _usd(r[2]),
              "outstanding_usd": _usd(r[3]), "overdue_usd": _usd(r[4])} for i, r in enumerate(rows)],
@@ -113,10 +121,18 @@ def month_totals(session: Session, company: Company) -> dict:
            "costs": Decimal(str(m.get("total_out") or 0)), **_pending(m)} for m in snaps]
     for m in ms:
         m["net"] = m["income"] - m["costs"]
+    # 10-nov (Jose: "¿gasté más en septiembre que en agosto?"): la diferencia contra el mes cerrado anterior la calcula el
+    # código (la IA no resta ni compara cifras, regla 1). Positivo = subió; negativo = bajó.
+    for prev, m in zip(ms, ms[1:]):
+        m["vs_prev"] = {"previous_month": prev["month"], "income_change_usd": _usd(m["income"] - prev["income"]),
+                        "costs_change_usd": _usd(m["costs"] - prev["costs"]),
+                        "income_minus_costs_change_usd": _usd(m["net"] - prev["net"])}
 
     def fmt(m):
         out = {"month": m["month"], "income_usd": _usd(m["income"]), "costs_usd": _usd(m["costs"]),
                "income_minus_costs_usd": _usd(m["net"])}
+        if m.get("vs_prev"):
+            out["vs_previous_month"] = m["vs_prev"]
         if m["p_count"]:   # Lo Pendiente se declara (regla 4): no está en ingresos ni en costos
             out["pending_to_classify"] = {"transactions": m["p_count"], "money_in_usd": _usd(m["p_in"]),
                                           "money_out_usd": _usd(m["p_out"])}
@@ -138,18 +154,90 @@ def month_totals(session: Session, company: Company) -> dict:
 
 
 def category_totals(session: Session, company: Company) -> dict:
-    by: dict[str, Decimal] = defaultdict(Decimal)
-    for m in month_close.owner_months(session, company.id):
+    """Costos E INGRESOS por categoría, de todos los meses cerrados y de cada uno (10-nov, Jose: el asistente tiene que
+    responder "¿qué fue lo que más gané en septiembre?" o "¿en qué gasté más en agosto?"). Todo sale de las fotos de cierre."""
+    snaps = sorted(month_close.owner_months(session, company.id), key=lambda m: m["month"])
+    out_by: dict[str, Decimal] = defaultdict(Decimal)
+    in_by: dict[str, Decimal] = defaultdict(Decimal)
+
+    def ranked(rows: dict[str, Decimal], key: str) -> list[dict]:
+        return [{"rank": i + 1, "category": k, key: _usd(v)}
+                for i, (k, v) in enumerate(sorted(rows.items(), key=lambda kv: kv[1], reverse=True))]
+
+    months = []
+    for m in snaps:
+        mo: dict[str, Decimal] = defaultdict(Decimal)
+        mi: dict[str, Decimal] = defaultdict(Decimal)
         for c in m.get("out") or []:
-            by[c["category"]] += Decimal(str(c.get("amount") or 0))
-    if not by:
+            mo[c["category"]] += Decimal(str(c.get("amount") or 0))
+        for c in m.get("in") or []:
+            mi[c["category"]] += Decimal(str(c.get("amount") or 0))
+        for k, v in mo.items():
+            out_by[k] += v
+        for k, v in mi.items():
+            in_by[k] += v
+        months.append({"month": _month_label(m["month"]),
+                       "income_by_category_largest_first": ranked(mi, "income_usd"),
+                       "costs_by_category_largest_first": ranked(mo, "costs_usd")})
+    if not out_by and not in_by:
         return {"none": "No closed months yet."}
-    ordered = sorted(by.items(), key=lambda kv: kv[1], reverse=True)
     return {
-        "categories_largest_first": [{"rank": i + 1, "category": k, "costs_usd": _usd(v)} for i, (k, v) in enumerate(ordered)],
-        "all_categories_total_usd": _usd(sum(by.values())),
-        "pending_to_classify": _pending_total(month_close.owner_months(session, company.id)),
+        "categories_largest_first": ranked(out_by, "costs_usd"),
+        "all_categories_total_usd": _usd(sum(out_by.values())),
+        "income_categories_largest_first": ranked(in_by, "income_usd"),
+        "all_income_categories_total_usd": _usd(sum(in_by.values())),
+        "by_month": months,
+        "pending_to_classify": _pending_total(snaps),
         "source": "the snapshots of the months the bookkeeper closed (computed by SQL at close)",
+    }
+
+
+def merchant_totals(session: Session, company: Company) -> dict:
+    """Cuánto se gastó en cada COMERCIO (la subcategoría: Home Depot, Shell…) en los meses cerrados, dentro de su categoría,
+    en el año y por mes (10-nov, Jose: "¿cuánto he gastado en determinada tienda?"). Solo totales, nunca transacciones
+    sueltas (el dueño no ve movimientos). SQL sobre los meses cerrados VIGENTES: un mes cerrado no cambia (409
+    `month_closed`), así que estas sumas coinciden con lo que se cerró. Mismo signo que el cierre (`signed_amount`).
+    La IA no decide qué comercio es qué (regla 2): la categoría es la que pusieron una regla o el bookkeeper."""
+    closed = sorted(m["month"] for m in month_close.owner_months(session, company.id))
+    if not closed:
+        return {"none": "No closed months yet."}
+    ym = func.to_char(Transaction.date, "YYYY-MM")
+    rows = session.exec(
+        select(ym, Transaction.category, Transaction.subcategory, func.sum(signed_amount()),
+               func.count(Transaction.id))
+        .where(Transaction.company_id == company.id).where(Transaction.account_type.in_(month_close._OUT))
+        .where(ym.in_(closed))
+        .group_by(ym, Transaction.category, Transaction.subcategory)
+    ).all()
+    year: dict[tuple[str, str], list] = {}
+    months: dict[str, list] = defaultdict(list)
+    for mo, cat, merchant, amt, n in rows:
+        amt, merchant = Decimal(str(amt or 0)), merchant or "—"
+        k = (cat or "Other", merchant)
+        year.setdefault(k, [Decimal(0), 0])
+        year[k][0] += amt
+        year[k][1] += int(n)
+        months[mo].append((cat or "Other", merchant, amt))
+    by_cat: dict[str, list] = defaultdict(list)
+    for (cat, merchant), (amt, n) in year.items():
+        by_cat[cat].append({"merchant": merchant, "costs_usd": amt, "payments": n})
+    categories = sorted(({"category": c, "costs_usd": sum(x["costs_usd"] for x in ms),
+                          "merchants_largest_first": sorted(ms, key=lambda x: x["costs_usd"], reverse=True)}
+                         for c, ms in by_cat.items()), key=lambda c: c["costs_usd"], reverse=True)
+    for c in categories:
+        c["costs_usd"] = _usd(c["costs_usd"])
+        for x in c["merchants_largest_first"]:
+            x["costs_usd"] = _usd(x["costs_usd"])
+    top = sorted(((m, cat, a) for (cat, m), (a, _) in year.items()), key=lambda r: r[2], reverse=True)[:10]
+    return {
+        "merchants_by_category": categories,
+        "top_merchants": [{"rank": i + 1, "merchant": m, "category": c, "costs_usd": _usd(a)} for i, (m, c, a) in enumerate(top)],
+        "by_month": [{"month": _month_label(mo), "merchants_largest_first": [
+                         {"merchant": m, "category": c, "costs_usd": _usd(a)}
+                         for c, m, a in sorted(months[mo], key=lambda r: r[2], reverse=True)[:12]]}
+                     for mo in closed if mo in months],
+        "note": "Merchant names are as they appear in the books. A merchant's category was set by a rule or by the bookkeeper.",
+        "source": "SQL over the transactions of the months the bookkeeper closed (closed months cannot change)",
     }
 
 
@@ -158,4 +246,5 @@ SERVER_TOOLS: dict[str, Callable[[Session, Company], dict]] = {
     "contractor_totals": contractor_totals,
     "month_totals": month_totals,
     "category_totals": category_totals,
+    "merchant_totals": merchant_totals,
 }

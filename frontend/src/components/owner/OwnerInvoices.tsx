@@ -50,7 +50,8 @@ const STATUS_CLS: Record<string, string> = {
   PARTIALLY_REFUNDED: "bg-amber-50 text-amber-700 ring-amber-200",
 };
 
-export default function OwnerInvoices({ preview, businessName, autoOpen = 0 }: { preview: boolean; businessName: string; autoOpen?: number }) {
+export default function OwnerInvoices({ preview, businessName, autoOpen = 0, remindFor = null }:
+  { preview: boolean; businessName: string; autoOpen?: number; remindFor?: { id: number; n: number } | null }) {
   const { t, i18n } = useTranslation();
   const lang = i18n.language || "en";
   const [v, setV] = useState<InvoicesView | null>(null);
@@ -346,6 +347,7 @@ export default function OwnerInvoices({ preview, businessName, autoOpen = 0 }: {
         ) : (
           <ul className="divide-y divide-slate-100">
             {shown.map((inv) => <Row key={inv.id} inv={inv} day={day} preview={preview} busy={busy} autoQr={qrFor === inv.id}
+                                     remind={remindFor?.id === inv.id ? remindFor.n : 0}
                                          confirming={confirmSend === inv.id} onAskSend={() => setConfirmSend(inv.id)}
                                          onCancelSend={() => setConfirmSend(null)}
                                          onSend={() => void run(() => sendInvoice(inv.id), (x) => { setV(x); setConfirmSend(null); })}
@@ -362,21 +364,33 @@ export default function OwnerInvoices({ preview, businessName, autoOpen = 0 }: {
 // Enviadas y sin cobrar del todo (las mismas que `OPEN` en `backend/invoices.py`): se pueden cobrar.
 const OPEN = ["SENT", "UNPAID", "PARTIALLY_PAID", "PAYMENT_PENDING", "SCHEDULED"];
 
-function Row({ inv, day, preview, busy, confirming, autoQr = false, onAskSend, onCancelSend, onSend, onView }: {
-  inv: OwnerInvoice; day: (iso: string) => string; preview: boolean; busy: boolean; confirming: boolean; autoQr?: boolean;
+function Row({ inv, day, preview, busy, confirming, autoQr = false, remind = 0, onAskSend, onCancelSend, onSend, onView }: {
+  inv: OwnerInvoice; day: (iso: string) => string; preview: boolean; busy: boolean; confirming: boolean; autoQr?: boolean; remind?: number;
   onAskSend: () => void; onCancelSend: () => void; onSend: () => void; onView: (v: InvoicesView) => void;
 }) {
   const { t } = useTranslation();
   const [collecting, setCollecting] = useState(autoQr);
   const [discarding, setDiscarding] = useState(false);   // confirmar "Descartar" en la fila (5-nov; antes, window.confirm)
   useEffect(() => { if (autoQr) setCollecting(true); }, [autoQr]);
+  // 10-nov: viene de "Recordar" en Análisis: la factura se trae a la vista y se resalta unos segundos, con el panel CERRADO
+  // (Jose: abierto de una vez "no es estético"); el dueño toca "Cobrar" y ahí se despliega.
+  const rowRef = useRef<HTMLLIElement>(null);
+  const [spot, setSpot] = useState(false);
+  useEffect(() => {
+    if (!remind) return;
+    setTimeout(() => rowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+    setSpot(true);
+    const off = setTimeout(() => setSpot(false), 3200);
+    return () => clearTimeout(off);
+  }, [remind]);
   const canCollect = OPEN.includes(inv.status) && !preview;
   const key = inv.overdue ? "OVERDUE" : inv.status;
   const name = inv.customer?.name ?? "—";
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "·";
   return (
-    <li data-tour={inv.status === "PAID" && inv.in_books ? "pp-paid-invoice" : undefined}
-        className={`px-3 py-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm border-s-4 ${ACCENT[key] ?? "border-s-slate-200"}`}>
+    <li ref={rowRef} data-tour={inv.status === "PAID" && inv.in_books ? "pp-paid-invoice" : undefined}
+        className={`px-3 py-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm border-s-4 transition-colors duration-700 ${ACCENT[key] ?? "border-s-slate-200"} ${
+          spot ? "bg-amber-50 ring-2 ring-inset ring-[#FFC439]" : ""}`}>
       <span className="size-9 shrink-0 rounded-full bg-slate-100 text-slate-600 text-xs font-bold flex items-center justify-center">{initials}</span>
       <span className="min-w-0 flex-1">
         <span className="block font-semibold text-slate-900 truncate">{name}</span>

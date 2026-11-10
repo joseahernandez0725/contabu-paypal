@@ -12,7 +12,7 @@ import ConnectPayPal from "./ConnectPayPal";
 import { monthLabel } from "./MonthCloseSection";
 import { getInvoices, money } from "../../api";
 import type { Company } from "../../types";
-import { PAYPAL_DEMO } from "../../demo";
+import { inTour, PAYPAL_DEMO } from "../../demo";
 import { GuideButton } from "./PayPalGuide";
 import CardPaymentsWelcome from "./CardPaymentsWelcome";
 import OwnerSidebar, { type OwnerView } from "./OwnerSidebar";
@@ -33,6 +33,8 @@ import { DetailCard, DetailEmpty, DetailHeader, PageHeader, Stat } from "../Page
 
 export const OWNER_PREVIEW_EVENT = "contabu:owner-preview";
 export const OWNER_VIEW_EVENT = "contabu:owner-view";   // detail: OwnerView
+// El mismo de studioWidgets (sin importarlo: AG Studio se carga aparte, solo al abrir Análisis). detail: id de la factura.
+const REMIND_EVENT = "contabu:remind-invoice";
 
 /** La consola pide la vista previa del portal (Ajustes → Dueño del negocio). La escucha App.tsx. */
 export function openOwnerPreview() {
@@ -49,6 +51,8 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
 }) {
   const { t, i18n } = useTranslation();
   const [view, setView] = useState<OwnerView>(initialView);
+  const [remindFor, setRemindFor] = useState<{ id: number; n: number } | null>(null);
+  const [askNonce, setAskNonce] = useState(0);   // 10-nov: abrir el asistente desde cualquier pantalla
   // Contratistas solo con PAYPAL_PAYOUTS encendido en el backend (4-nov): si no, la pestaña no aparece.
   const [payouts, setPayouts] = useState(false);
   useEffect(() => { getContractors().then((x) => setPayouts(x.enabled)).catch(() => setPayouts(false)); }, []);
@@ -57,8 +61,11 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
   // La guía de `paypal.contabu.com` (5-nov) pide una pantalla del portal aunque ya esté abierto.
   useEffect(() => {
     const go = (e: Event) => setView((e as CustomEvent<OwnerView>).detail);
+    // 10-nov: "Recordar" en la tabla de Análisis abre Cobros › Facturas con el recordatorio de esa factura (lo envía el dueño).
+    const remind = (e: Event) => { setRemindFor({ id: Number((e as CustomEvent<number>).detail), n: Date.now() }); setView("invoices"); };
     window.addEventListener(OWNER_VIEW_EVENT, go);
-    return () => window.removeEventListener(OWNER_VIEW_EVENT, go);
+    window.addEventListener(REMIND_EVENT, remind);
+    return () => { window.removeEventListener(OWNER_VIEW_EVENT, go); window.removeEventListener(REMIND_EVENT, remind); };
   }, []);
   const [menuOpen, setMenuOpen] = useState(false); // el cajón de la barra lateral (solo celular)
   const [home, setHome] = useState<OwnerHome | null>(null);
@@ -96,7 +103,7 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
               <path d="M4 7h16M4 12h16M4 17h16" />
             </svg>
           </button>
-          <h1 className="font-semibold text-slate-900 truncate">{t(`owner.nav.${view}`)}</h1>
+          <h1 className="font-semibold text-slate-900 truncate">{t(`owner.nav.${view === "dashboard" ? "invoices" : view}`)}</h1>
           {managedBy && <span className="text-sm text-slate-400 truncate">· {t("owner.managedBy", { name: managedBy })}</span>}
           {home && home.closed_months[0] && (
             <span className="hidden sm:inline text-sm text-slate-400 truncate">· {t("owner.lastClosed", { month: monthLabel(i18n.language || "en", home.closed_months[0].month) })}</span>
@@ -126,9 +133,12 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
               <Summary home={home} />
             </>
           ) : view === "dashboard" ? (
-            <Suspense fallback={<div className="flex justify-center py-16"><span className="loading loading-spinner loading-lg text-brand-green" /></div>}>
-              <OwnerDashboard home={home} />
-            </Suspense>
+            <>
+              <InvoicesTabs view={view} onSelect={setView} />
+              <Suspense fallback={<div className="flex justify-center py-16"><span className="loading loading-spinner loading-lg text-brand-green" /></div>}>
+                <OwnerDashboard home={home} openAsk={askNonce} />
+              </Suspense>
+            </>
           ) : view === "accounts" ? (
             <OwnerAccounts preview={home.preview} managedBy={home.managed_by} />
           ) : view === "contractors" ? (
@@ -136,11 +146,33 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
           ) : view === "settings" ? (
             <OwnerSettings preview={home.preview} businessName={home.company.name} paypalConnected={home.paypal.connected} />
           ) : (
-            <OwnerInvoices preview={home.preview} businessName={home.company.name} autoOpen={newInvoice} />
+            <>
+              <InvoicesTabs view={view} onSelect={setView} />
+              <OwnerInvoices preview={home.preview} businessName={home.company.name} autoOpen={newInvoice} remindFor={remindFor} />
+            </>
           )}
         </main>
       </div>
+      {/* 10-nov (Jose: el asistente quedó escondido): el mismo botón en todas las pantallas. El asistente corre sobre el Agent
+          Framework de AG Studio, que necesita el tablero: tocarlo lleva a Cobros › Análisis con el chat abierto. En
+          Análisis el botón lo pone el propio tablero; en la visita y en la vista previa no hay IA. */}
+      {PAYPAL_DEMO && home && !home.preview && !inTour() && view !== "dashboard" && (
+        <AskFab onClick={() => { setAskNonce(Date.now()); setView("dashboard"); }} />
+      )}
     </div>
+  );
+}
+
+function AskFab({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <button onClick={onClick} aria-label={t("owner.dashboard.ai.open")} title={t("owner.dashboard.ai.open")}
+            className="fixed bottom-5 right-5 z-[61] flex h-14 items-center gap-2 rounded-full px-5 shadow-lg transition-all bg-[#FFC439] text-[#003087] hover:bg-[#f2ba36]">
+      <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /><path d="M8.5 11h.01M12 11h.01M15.5 11h.01" />
+      </svg>
+      <span className="hidden sm:inline text-sm font-semibold">{t("owner.dashboard.ai.fab")}</span>
+    </button>
   );
 }
 
@@ -218,6 +250,24 @@ function QuickActions({ preview, paypal, onNewInvoice, onOpenInvoices }: {
         </button>
       )}
       <span className="ms-auto text-xs text-slate-500">{t("owner.quick.hint")}</span>
+    </div>
+  );
+}
+
+/** Las dos pestañas de Cobros (10-nov, Jose: Análisis "dentro pero separado"): la lista de facturas y el tablero de AG Studio.
+ *  Cada una es su propia ruta ("invoices" / "dashboard"), así la visita y "Recordar" llevan directo a la que toca. */
+function InvoicesTabs({ view, onSelect }: { view: OwnerView; onSelect: (v: OwnerView) => void }) {
+  const { t } = useTranslation();
+  const tabs: [OwnerView, string][] = [["invoices", t("owner.invoices.tabs.list")], ["dashboard", t("owner.invoices.tabs.insights")]];
+  return (
+    <div role="tablist" aria-label={t("owner.nav.invoices")} className="inline-flex rounded-xl bg-slate-100 p-1">
+      {tabs.map(([v, label]) => (
+        <button key={v} role="tab" aria-selected={view === v} onClick={() => onSelect(v)} data-tour={v === "dashboard" ? "pp-insights-tab" : undefined}
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  view === v ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
+          {label}
+        </button>
+      ))}
     </div>
   );
 }

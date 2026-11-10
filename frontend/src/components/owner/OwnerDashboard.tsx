@@ -5,7 +5,7 @@ import { AgStudioAiModule, studioTheme, type AgAiHarness, type AgReportState, ty
 import { AG_STUDIO_LOCALE_ES_ES } from "ag-studio-locale";
 import { getContractors, getInvoices, type ContractorPayment, type OwnerHome, type OwnerInvoice, type StudioStep, type StudioTurnCost } from "../../api";
 import { inTour } from "../../demo";
-import { collectionsAssistant, modelLabel, STUDIO_AI_TEXT, toolDisplay } from "./studioAssistant";
+import { collectionsAssistant, modelLabel, setAssistantCategories, STUDIO_AI_TEXT, toolDisplay } from "./studioAssistant";
 import { contabuWidgets } from "./studioWidgets";
 import AiTrace, { type TraceStep } from "./AiTrace";
 import OwnerChat from "./OwnerChat";
@@ -22,9 +22,13 @@ const LICENSE = (import.meta.env.VITE_AG_STUDIO_LICENSE as string | undefined) |
 
 // PayPal: azul de marca y el amarillo del botón; el resto, la tipografía de ContaBu.
 // 9-nov (revisión externa): el tercer color es el de "Vencido" en "Facturas por cliente": rojo, como en todo el portal.
-const PALETTE = ["#0070BA", "#94A3B8", "#E11D48", "#FFC439", "#2E7D32", "#7B61FF", "#E0699B", "#003087", "#00A3A3", "#F28C28"];
+// 🔄 10-nov (Jose, opción A): los colores del Resumen. AG Studio usa UNA paleta para todo el tablero, por posición de la
+// serie: 1 = verde (ingresos, cobrado), 2 = ladrillo (costos, vencido), 3 = azul de PayPal (por cobrar, aún no vence).
+// Validada con `validate_palette.js` (las tres, todos los pares): PASS, con el par verde/ladrillo en la franja 6–8 de
+// daltonismo, legal porque cada serie tiene leyenda con nombre y tooltip.
+const PALETTE = ["#059669", "#D9534F", "#0070BA", "#FFC439", "#2E7D32", "#7B61FF", "#E0699B", "#003087", "#00A3A3", "#F28C28"];
 // Opción de Jose (9-nov): un marco verde de ContaBu (#15803d) con 70 % de transparencia, para distinguir el tablero.
-const STUDIO_FRAME: string | false = false;
+const STUDIO_FRAME: string | false = "1px solid rgba(21, 128, 61, 0.3)";
 const theme = studioTheme.withParams({
   accentColor: "#0070BA",
   fontFamily: "inherit",
@@ -65,7 +69,7 @@ const RESPONSIVE: AgResponsiveLayoutBreakpoint[] = [{
 const NARROW = typeof window !== "undefined" && window.innerWidth < 640;
 const TOP_CUSTOMERS = 10;    // "Facturas por cliente": los 10 que más facturaron, el resto en "Otros"
 const BUTTONS_UP_TO = 6;     // hasta 6 clientes, botones; con más, nuestro buscador (`contabu-customer-search`)
-const MOBILE_TRACKS = 3 + 5 * 4 + 4 * 13;   // en el celular, uno debajo del otro (sin la tabla, que se suma aparte)
+const MOBILE_TRACKS = 3 + 5 * 4 + 2 * 13;   // en el celular, uno debajo del otro (sin la tabla, que se suma aparte)
 
 const PAID = new Set(["PAID", "MARKED_AS_PAID", "PAID_EXTERNAL"]);
 const REFUNDED = new Set(["REFUNDED", "PARTIALLY_REFUNDED", "MARKED_AS_REFUNDED", "REFUNDED_EXTERNAL"]);
@@ -98,6 +102,11 @@ const monthStart = (ym: string) => new Date(Number(ym.slice(0, 4)), Number(ym.sl
 //   se queda). - El encabezado del panel no lo pliega (plegado, el chat desaparecía sin una forma clara de abrirlo).
 const STUDIO_CSS = `
 .contabu-studio .ag-studio-button-filter-widget .ag-studio-filter-widget-title { display: none; }
+/* 10-nov (Jose): sin efecto al pasar el mouse por las tarjetas (se probó borde, sombra y tinte; ninguno se quedó). El foco
+   de AG Studio (al tocar una tarjeta), verde y curvo, en vez del recuadro azul de esquinas rectas. */
+.contabu-studio .ag-studio-layout-widget { border-radius: 12px; }
+.contabu-studio .ag-studio-layout-widget:focus-within, .contabu-studio .ag-studio-layout-widget:focus {
+  box-shadow: inset 0 0 0 1px rgba(21, 128, 61, .55) !important; outline: none; }
 /* El chat propio (OwnerChat) flota abajo a la derecha, encima de los gráficos (8-nov). */
 .contabu-chat { right: 20px; bottom: 88px; width: min(380px, calc(100vw - 24px)); height: min(560px, calc(100vh - 150px)); }
 @media (max-width: 640px) { .contabu-chat { right: 12px; bottom: 84px; height: min(520px, calc(100vh - 140px)); } }
@@ -117,7 +126,7 @@ const STUDIO_CSS = `
 }
 `;
 
-export default function OwnerDashboard({ home }: { home: OwnerHome }) {
+export default function OwnerDashboard({ home, openAsk = 0 }: { home: OwnerHome; openAsk?: number }) {
   const { t, i18n } = useTranslation();
   const es = (i18n.language || "en").startsWith("es");
   const [invoices, setInvoices] = useState<OwnerInvoice[] | null>(null);
@@ -130,6 +139,8 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
   const showFab = canAsk || inTour();
   const [tourNote, setTourNote] = useState(false);
   const [asking, setAsking] = useState(false);
+  // 10-nov: el botón del asistente vive en todo el portal (OwnerApp); desde otra pantalla llega aquí con el chat abierto.
+  useEffect(() => { if (openAsk) setAsking(true); }, [openAsk]);
   // Por cada respuesta (8-nov): se acumulan sus turnos hasta el final y se muestra el resumen, con la revisión de cifras.
   type Answer = { turns: number; ms: number; tokens: number; usd: number; model: string; verified: boolean | null; steps: StudioStep[] };
   const running = useRef<Answer>({ turns: 0, ms: 0, tokens: 0, usd: 0, model: "", verified: null, steps: [] });
@@ -148,14 +159,14 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
   const toolName = (n: string) => (t(`owner.dashboard.ai.tool.${n === "customer_totals" ? "customerTotals" : n === "contractor_totals" ? "contractorTotals"
     : n === "month_totals" ? "monthTotals" : n === "category_totals" ? "categoryTotals" : n === "reminder_candidates" ? "reminderCandidates"
     : n === "open_collections" ? "openCollections" : `studio.${n}`}`, { name: n, defaultValue: n }));
-  const starters = useMemo(() => [
-    { label: t("owner.dashboard.ai.s1"), prompt: t("owner.dashboard.ai.p1") },
-    { label: t("owner.dashboard.ai.s2"), prompt: t("owner.dashboard.ai.p2") },
-    { label: t("owner.dashboard.ai.s3"), prompt: t("owner.dashboard.ai.p3") },
-  ], [t]);
+  // 10-nov (Jose): preguntas de inicio sobre todas sus finanzas (ingresos, gastos, cobros, contratistas), no solo cobros.
+  const starters = useMemo(() => [1, 2, 14, 3, 4, 9, 10, 11, 5, 12, 6, 7, 8, 13].map((i) =>
+    ({ label: t(`owner.dashboard.ai.s${i}`), prompt: t(`owner.dashboard.ai.p${i}`) })), [t]);
   const [harness, setHarness] = useState<AgAiHarness | null>(null);
   // AG Studio solo arma el harness cuando abre su propio panel (modo edición). El tablero se queda en modo vista, así que
   // lo armamos nosotros con la misma función en cuanto su API está lista (`onApiReady`).
+  // Las categorías del negocio, para que en español el asistente las nombre como la pantalla (10-nov).
+  setAssistantCategories([...new Set(home.closed_months.flatMap((m) => [...m.in, ...m.out].map((c) => c.category)))]);
   const ai = useMemo(() => collectionsAssistant(es ? "es" : "en", onTurn, starters), [es, onTurn, starters]);
 
   useEffect(() => {
@@ -171,6 +182,7 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
       const amount = num(i.amount);
       return {
         number: i.number ?? "—", customer: i.customer?.name ?? "—", concept: i.concept, status,
+        invoice_id: String(i.id),   // 10-nov: oculto, ligado a la columna Estado para el botón "Recordar" de la tabla
         // 8-nov (revisión como cliente): la tabla mostraba "Overdue" y "2026-11" en la pantalla en español.
         status_label: t(`owner.dashboard.status.${status}`, { defaultValue: status }),
         due_label: i.due_date ? monthLabelOf(i.due_date.slice(0, 7)) : "—",
@@ -240,7 +252,10 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
           { id: "paid_month_name", name: t("owner.dashboard.f.paidMonthName"), description: "Month name the invoice was paid, e.g. August (the year is in the year field)", ...txt },
           { id: "year", name: t("owner.dashboard.f.year"), description: "Year of the invoice (paid, or due if unpaid)", ...yr },
           { id: "customer_group", name: t("owner.dashboard.f.customer"), description: "Customer name for the 10 that billed the most; the rest grouped as Others", ...txt },
-          { id: "status_label", name: t("owner.dashboard.f.status"), description: "Status as shown on screen (filter with status)", ...txt },
+          // `context.remind` (10-nov): la tabla dibuja en esta columna el botón "Recordar" de las facturas sin pagar.
+          { id: "status_label", name: t("owner.dashboard.f.status"), description: "Status as shown on screen (filter with status)", ...txt,
+            context: { remind: true } },
+          { id: "invoice_id", name: "Invoice id", description: "Internal invoice id (not shown)", ...txt },
           { id: "due_label", name: t("owner.dashboard.f.dueMonth"), description: "Due month as shown on screen", ...txt },
         ] },
         { id: "books", name: t("owner.dashboard.src.books"), data: books, fields: [
@@ -278,8 +293,10 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
     };
   }, [invoices, payments, home, t, es]);
 
+  // 🔄 10-nov (Jose): la tabla vuelve. Es la única tabla de AG Grid del tablero y, a diferencia de la lista de Facturas, se
+  // filtra junto con todo al elegir un cliente.
   const LIST_TRACKS = Math.min(20, Math.max(8, Math.ceil(((invoices?.filter((i) => i.status !== "DRAFT").length ?? 8) + 2) * 28 / 22) + 1));
-  const TRACKS = 33 + LIST_TRACKS;
+  const TRACKS = 20 + LIST_TRACKS;
   const MANY = new Set((invoices ?? []).filter((i) => i.status !== "DRAFT").map((i) => i.customer?.name)).size > BUTTONS_UP_TO;
   // El tablero ya armado (el dueño no tiene que construir nada); en modo vista: filtra y cruza, no edita.
   // 8-nov (rediseño, revisión de Jose como usuario externo): arriba lo que necesita atención ("Quién me debe" y los
@@ -287,7 +304,9 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
   // lista. Un filtro de clientes con botones a la vista reemplaza la pestaña "Filters". Altura total: 48 filas.
   const initialState = useMemo(() => {
     const titled = (key: string) => ({ title: { enabled: true, text: t(`owner.dashboard.w.${key}`) } });
-    const kpi = (field: string) => ({ type: "contabu-kpi", dataMapping: { value: [{ id: field, aggregation: "sum" }] } });
+    // 10-nov (Jose): "Por cobrar" y "Vencido" filtran el tablero al tocarlos (por el estado de la factura).
+    const kpi = (field: string, byStatus = false) => ({ type: "contabu-kpi", dataMapping: {
+      value: [{ id: field, aggregation: "sum" }], ...(byStatus ? { status: [{ id: "invoices.status" }] } : {}) } });
     const chart = (key: string, extra: object = {}) => ({
       ...titled(key),
       // 8-nov: AG Studio no deja dar formato a los números del eje ("20K"): el eje dice en qué moneda está.
@@ -311,8 +330,8 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
                                           defaultItem: { backgroundColor: "#FFFFFF", borderEnabled: true, borderColor: "#CBD5E1", borderRadius: 999, color: "#334155" },
                                           activeItem: { backgroundColor: "#0070BA", color: "#FFFFFF", borderColor: "#0070BA" } } } },
           collected: kpi("invoices.collected"),
-          open: kpi("invoices.open"),
-          overdue: kpi("invoices.overdue"),
+          open: kpi("invoices.open", true),
+          overdue: kpi("invoices.overdue", true),
           contractors: kpi("contractors.amount"),
           pending: kpi("periods.pending_usd"),
           whoOwes: {
@@ -320,23 +339,15 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
             dataMapping: { customer: [{ id: "invoices.customer" }], open: [{ id: "invoices.open", aggregation: "sum" }],
                            overdue: [{ id: "invoices.overdue", aggregation: "sum" }], days_overdue: [{ id: "invoices.days_overdue", aggregation: "max" }] },
           },
-          months: {
-            type: "column-chart-grouped",
-            dataMapping: { categoryKey: [{ id: "books.month_label" }],
-                           valueKey: [{ id: "books.income", aggregation: "sum" }, { id: "books.costs", aggregation: "sum" }], tooltipKey: [] },
-            format: chart("months"),
-          },
-          costs: {
-            type: "bar-chart-grouped",
-            dataMapping: { categoryKey: [{ id: "costs.category_label" }], valueKey: [{ id: "costs.costs", aggregation: "sum" }], tooltipKey: [] },
-            sort: [{ field: { id: "costs.costs", aggregation: "sum" }, direction: "desc" }],
-            format: chart("costs", { seriesLimit: { enabled: true, max: 6 } }),
-          },
+          // 10-nov (Jose): sin "Ingresos contra costos por mes" ni "Mayores costos por categoría". Las dos ya están en el
+          // Resumen y salen de los libros cerrados (todo el negocio), así que no respondían al filtro por cliente: aquí queda
+          // solo lo que sale de las facturas y los pagos, y todo se filtra junto.
           byCustomer: {
             type: "column-chart-grouped",
             dataMapping: { categoryKey: [{ id: "invoices.customer_group" }],
-                           valueKey: [{ id: "invoices.collected", aggregation: "sum" }, { id: "invoices.open", aggregation: "sum" },
-                                      { id: "invoices.overdue", aggregation: "sum" }], tooltipKey: [] },
+                           // 10-nov: Cobrado, Vencido, Por cobrar (el orden da el color: verde, ladrillo, azul).
+                           valueKey: [{ id: "invoices.collected", aggregation: "sum" }, { id: "invoices.overdue", aggregation: "sum" },
+                                      { id: "invoices.open", aggregation: "sum" }], tooltipKey: [] },
             format: chart("byCustomer"),
           },
           list: {
@@ -354,10 +365,8 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
           contractors: { xTrack: 15, yTrack: 3, xSpan: 5, ySpan: 4 },
           pending: { xTrack: 20, yTrack: 3, xSpan: 4, ySpan: 4 },
           whoOwes: { xTrack: 0, yTrack: 7, xSpan: 9, ySpan: 13 },
-          months: { xTrack: 9, yTrack: 7, xSpan: 15, ySpan: 13 },
-          costs: { xTrack: 0, yTrack: 20, xSpan: 12, ySpan: 13 },
-          byCustomer: { xTrack: 12, yTrack: 20, xSpan: 12, ySpan: 13 },
-          list: { xTrack: 0, yTrack: 33, xSpan: 24, ySpan: LIST_TRACKS },
+          byCustomer: { xTrack: 9, yTrack: 7, xSpan: 15, ySpan: 13 },
+          list: { xTrack: 0, yTrack: 20, xSpan: 24, ySpan: LIST_TRACKS },
         },
       }],
       selectedPageId: "collections",
@@ -365,7 +374,7 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
       panels: { filters: { collapsed: true }, ai: { collapsed: false } },
     } as unknown as AgReportState;
   }, [t, LIST_TRACKS, MANY]);
-  const widgets = useMemo(() => contabuWidgets(), [es]);   // los nombres del menú de edición, en el idioma de la pantalla
+  const widgets = useMemo(() => contabuWidgets({ canRemind: !home.preview && !inTour() }), [es, home.preview]);   // los nombres del menú de edición, en el idioma de la pantalla
   // 8-nov: sin "(sum)" / "(suma)" en las leyendas y los tooltips: todas las cifras del tablero son sumas.
   const localeText = useMemo(() => ({ ...(es ? AG_STUDIO_LOCALE_ES_ES : {}), aggregationSumFieldName: "${name}",
                                        aggregationMaxFieldName: "${name}" }), [es]);
@@ -396,7 +405,7 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
       {/* `key`: AG Studio fija el idioma al crearse; al cambiarlo se vuelve a crear. El chat de AG Studio solo existe en
           el modo de edición: con el asistente abierto se pasa a ese modo, pero solo con el panel del chat. */}
       <style>{STUDIO_CSS}</style>
-      <div className="contabu-studio overflow-hidden" style={{ height: NARROW ? MOBILE_TRACKS * 22 + 60 + LIST_TRACKS * 22 : TRACKS * 22 + 90, minHeight: 560 }}>
+      <div className="contabu-studio overflow-hidden" style={{ height: NARROW ? MOBILE_TRACKS * 22 + 60 + LIST_TRACKS * 22 : TRACKS * 22 + 50, minHeight: 420 }}>
         <AgStudioProvider licenseKey={LICENSE} modules={[AgStudioAiModule]}>
           <AgStudio key={es ? "es" : "en"} data={data as never} initialState={initialState} mode="view" theme={theme} widgets={widgets}
                     onApiReady={canAsk ? (e: { api: unknown }) => setHarness((ai as (p: { api: unknown }) => AgAiHarness)({ api: e.api })) : undefined}

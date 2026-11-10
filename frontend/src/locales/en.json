@@ -1772,6 +1772,10 @@
         "outstanding": "Nothing to collect right now.",
         "overdue": "No overdue invoices ✓",
         "collected": "Nothing collected this year yet."
+      },
+      "tabs": {
+        "list": "Invoices",
+        "insights": "Insights"
       }
     },
     "preview": {
@@ -1824,7 +1828,7 @@
       "pick": "Year",
       "closedMonths_one": "1 closed month",
       "closedMonths_other": "{{count}} closed months",
-      "cumulative": "Year to date: income, costs and expenses",
+      "cumulative": "Income, costs and expenses by closed month",
       "soFar": "Year to date",
       "whereOut": "Costs and expenses by category",
       "whereOutSub": "Year to date, {{year}}",
@@ -1834,7 +1838,10 @@
       "txCount_other": "{{count}} transactions",
       "showTable": "View as a table",
       "hideTable": "Hide the table",
-      "category": "Category"
+      "category": "Category",
+      "thisMonth": "this month",
+      "txLabel": "Transactions",
+      "sigma": "Σ above each month: year to date so far (income · costs)."
     },
     "paypal": {
       "connect": "Connect PayPal",
@@ -2065,8 +2072,8 @@
         "b": "All of this runs in PayPal's sandbox: no real money moves. Sign in with Google and the access code to get your own book, connect your own PayPal sandbox app and send real sandbox invoices."
       },
       "insights": {
-        "t": "Insights: who owes you, at a glance",
-        "b": "An AG Studio dashboard over the owner's invoices, contractor payments and closed periods. \"Who owes me\" is our own widget: what each customer owes, the overdue part and the days late. Tap a customer and the whole page filters; Remind opens Invoices."
+        "t": "Invoices › Insights: who owes you, at a glance",
+        "b": "Inside Invoices, on its own tab, an AG Studio dashboard over the owner's invoices and contractor payments. \"Who owes me\" is our own widget: what each customer owes, the overdue part and the days late. Tap a customer and the whole page filters; Remind opens the invoice list."
       },
       "insightsAi": {
         "t": "What the assistant did",
@@ -2081,7 +2088,7 @@
     "intro": {
       "kicker": "ContaBu + PayPal · sandbox",
       "title": "Run your business from PayPal.",
-      "body": "For this hackathon we built a portal for small-business owners, managed by their bookkeeper, with PayPal at its center: invoices that customers pay by card and that the owner can dictate from a phone, contractor payments with PayPal Payouts, and every sale booked at gross with its fee apart, with nothing counted twice. And an Insights dashboard, built with AG Studio, where the owner sees at a glance who owes them and what is overdue, and asks an AI assistant who to collect from first. We built it on PayPal's APIs and the PayPal Agent Toolkit, with open AI models: the code checks every figure, and the owner confirms before anything is sent.",
+      "body": "For this hackathon we built a portal for small-business owners, managed by their bookkeeper, with PayPal at its center: invoices that customers pay by card and that the owner can dictate from a phone, contractor payments with PayPal Payouts, and every sale booked at gross with its fee apart, with nothing counted twice. And, inside Invoices, an Insights dashboard built with AG Studio, where the owner sees at a glance who owes them and what is overdue, and asks an AI assistant who to collect from first. We built it on PayPal's APIs and the PayPal Agent Toolkit, with open AI models: the code checks every figure, and the owner confirms before anything is sent.",
       "sandbox": "Everything runs in PayPal's sandbox. No real money moves.",
       "start": "Start the tour",
       "live": "Try it with my own PayPal sandbox",
@@ -2430,7 +2437,7 @@
       "editHint": "Payments already sent keep the email they went to."
     },
     "dashboard": {
-      "intro": "Explore your invoices, contractor payments and closed periods: tap a customer, a bar or a slice to filter the whole page. Summary shows your year; this is where you dig in.",
+      "intro": "Your collections at a glance: tap a customer or a bar to filter the whole page. Summary shows your year.",
       "note": "Built with AG Studio. The figures come from ContaBu's own calculations (SQL); the dashboard only adds them up and groups them.",
       "src": {
         "invoices": "Invoices",
@@ -2483,12 +2490,6 @@
         "open": "Ask the assistant",
         "close": "Close the assistant",
         "rules": "The assistant reads this dashboard and suggests who to remind. It never sends anything and never calculates: every figure comes from a query on your data. Each answer shows its time and cost.",
-        "s1": "Who should I remind?",
-        "p1": "Who should I remind to pay first, and with what tone?",
-        "s2": "Best customers",
-        "p2": "Which customers paid me the most this year?",
-        "s3": "Contractors",
-        "p3": "How much did I pay each contractor?",
         "tool": {
           "customerTotals": "Totals by customer (SQL)",
           "contractorTotals": "Totals by contractor (SQL)",
@@ -2514,16 +2515,44 @@
           "checkNone": "The answer has no figures to check"
         },
         "capReached": "You reached today's limit of questions to the assistant. The dashboard still works; you can ask again tomorrow.",
-        "welcome": "Hi! I read this dashboard and help you collect.\nAsk me who to remind first, who your best customers are, or what you spent in a month. I never send anything, and every figure comes from your data.",
+        "welcome": "Hi! I help with your business's finances: income and costs by month and by category, who owes you, who to remind and what you paid your contractors.\nI never send anything, and every figure comes from your data: the code checks it before you see it.",
         "fab": "Ask the assistant",
         "panel": "AI assistant",
         "new": "New",
         "thinking": "Thinking…",
-        "placeholder": "Ask about your invoices, customers or months…",
+        "placeholder": "Ask about your income, costs, invoices or contractors…",
         "model": "Model",
         "stop": "Stop",
         "send": "Send",
-        "tourOnly": "The tour does not run the AI. To ask the assistant, sign in with Google and the access code: you get your own book."
+        "tourOnly": "The tour does not run the AI. To ask the assistant, sign in with Google and the access code: you get your own book.",
+        "s1": "What earned most in September?",
+        "p1": "What did I earn the most from in September?",
+        "s2": "My best month",
+        "p2": "What was my best month for income and for profit?",
+        "s3": "Where did I spend most?",
+        "p3": "What did I spend the most on this year?",
+        "s4": "August costs",
+        "p4": "How much did I spend in August, and on what?",
+        "s5": "Who owes me?",
+        "p5": "Who owes me, and how much is overdue?",
+        "s6": "Who should I remind?",
+        "p6": "Who should I remind first to pay me, and in what tone?",
+        "s7": "Best customers",
+        "p7": "Which customers paid me the most this year?",
+        "s8": "Contractors",
+        "p8": "How much did I pay each contractor?",
+        "s9": "How much at Clayton Ridge?",
+        "p9": "How much have I spent at Clayton Ridge HVAC Supply this year?",
+        "s10": "How much on gas?",
+        "p10": "How much have I spent on gas?",
+        "s11": "PayPal fees",
+        "p11": "How much did PayPal charge me in fees?",
+        "s12": "Who pays late?",
+        "p12": "Which customers pay me late?",
+        "s13": "What's left to classify?",
+        "p13": "What is still pending to classify in my closed months?",
+        "s14": "September vs August",
+        "p14": "How did September compare with August, in income and in costs?"
       },
       "owes": {
         "total": "{{amount}} to collect",
@@ -2542,7 +2571,9 @@
         "overdueNone": "Nothing overdue ✓",
         "overdueSome": "Needs a reminder",
         "pendingSome": "In closed periods · your bookkeeper is classifying it",
-        "pendingNone": "Closed periods fully classified ✓"
+        "pendingNone": "Closed periods fully classified ✓",
+        "filterOn": "Tap to see only these invoices",
+        "filterOff": "Tap to clear the filter"
       },
       "status": {
         "Paid": "Paid",
@@ -2558,7 +2589,8 @@
         "label": "Search customer",
         "clear": "Clear customer filter",
         "none": "No customer matches"
-      }
+      },
+      "remindTip": "Opens this invoice's reminder in Invoices; you review and send it."
     }
   }
 }

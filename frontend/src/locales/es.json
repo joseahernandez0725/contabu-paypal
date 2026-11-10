@@ -1902,6 +1902,10 @@
         "outstanding": "No hay nada por cobrar ahora.",
         "overdue": "No hay facturas vencidas ✓",
         "collected": "Todavía no hay cobros este año."
+      },
+      "tabs": {
+        "list": "Facturas",
+        "insights": "Análisis"
       }
     },
     "preview": {
@@ -1954,7 +1958,7 @@
       "pick": "Año",
       "closedMonths_one": "1 mes cerrado",
       "closedMonths_other": "{{count}} meses cerrados",
-      "cumulative": "Acumulado del año: ingresos, costos y gastos",
+      "cumulative": "Ingresos, costos y gastos por mes cerrado",
       "soFar": "Acumulado del año",
       "whereOut": "Costos y gastos por categoría",
       "whereOutSub": "Acumulado {{year}}",
@@ -1964,7 +1968,10 @@
       "txCount_other": "{{count}} transacciones",
       "showTable": "Ver como tabla",
       "hideTable": "Ocultar la tabla",
-      "category": "Categoría"
+      "category": "Categoría",
+      "thisMonth": "en el mes",
+      "txLabel": "Transacciones",
+      "sigma": "Σ sobre cada mes: lo acumulado del año hasta ahí (ingresos · costos)."
     },
     "paypal": {
       "connect": "Conectar PayPal",
@@ -2142,7 +2149,7 @@
       },
       "categories": {
         "t": "De dónde vino el dinero y a dónde fue",
-        "b": "Las ventas de PayPal cuentan por el bruto; la comisión de PayPal es un gasto aparte, Merchant fees; un reembolso resta del ingreso en Returns and allowances. Cada cifra la calcula SQL, no la IA."
+        "b": "Las ventas de PayPal cuentan por el bruto; la comisión de PayPal es un gasto aparte, Comisiones por cobros; un reembolso resta del ingreso en Devoluciones y descuentos. Cada cifra la calcula SQL, no la IA."
       },
       "collected": {
         "t": "Ingresos PayPal",
@@ -2195,8 +2202,8 @@
         "b": "Todo esto corre en el sandbox de PayPal: no se mueve dinero real. Entra con Google y el código de acceso para tener tu propia contabilidad, conectar tu propia app de sandbox de PayPal y enviar facturas de sandbox reales."
       },
       "insights": {
-        "t": "Análisis: quién te debe, de un vistazo",
-        "b": "Un tablero de AG Studio con las facturas del dueño, los pagos a contratistas y los periodos cerrados. \"Quién me debe\" es un widget propio: lo que debe cada cliente, la parte vencida y los días de atraso. Al tocar un cliente se filtra toda la página; Recordar abre Cobros."
+        "t": "Cobros › Análisis: quién te debe, de un vistazo",
+        "b": "Dentro de Cobros, en su propia pestaña, un tablero de AG Studio con las facturas del dueño y sus pagos a contratistas. \"Quién me debe\" es un widget propio: lo que debe cada cliente, la parte vencida y los días de atraso. Al tocar un cliente se filtra toda la página; Recordar abre la lista de facturas."
       },
       "insightsAi": {
         "t": "Lo que hizo el asistente",
@@ -2211,7 +2218,7 @@
     "intro": {
       "kicker": "ContaBu + PayPal · sandbox",
       "title": "Administra tu negocio desde PayPal.",
-      "body": "Para este hackathon construimos el portal para el dueño de un pequeño negocio, administrado por su bookkeeper, con PayPal en el centro: facturas que el cliente paga con tarjeta y que el dueño puede dictar desde el celular, pagos a contratistas con PayPal Payouts, y cada venta registrada por el bruto con su comisión aparte, sin contar nada dos veces. Y un panel de análisis, hecho con AG Studio, donde el dueño ve de un vistazo quién le debe y cuánto está vencido, y le pregunta a un asistente de IA a quién cobrarle primero. Lo hicimos con las APIs de PayPal y el PayPal Agent Toolkit, y con modelos de IA abiertos: el código revisa cada cifra y el dueño confirma antes de que se envíe nada.",
+      "body": "Para este hackathon construimos el portal para el dueño de un pequeño negocio, administrado por su bookkeeper, con PayPal en el centro: facturas que el cliente paga con tarjeta y que el dueño puede dictar desde el celular, pagos a contratistas con PayPal Payouts, y cada venta registrada por el bruto con su comisión aparte, sin contar nada dos veces. Y, dentro de Cobros, un panel de análisis hecho con AG Studio, donde el dueño ve de un vistazo quién le debe y cuánto está vencido, y le pregunta a un asistente de IA a quién cobrarle primero. Lo hicimos con las APIs de PayPal y el PayPal Agent Toolkit, y con modelos de IA abiertos: el código revisa cada cifra y el dueño confirma antes de que se envíe nada.",
       "sandbox": "Todo corre en el sandbox de PayPal. No se mueve dinero real.",
       "start": "Empezar la visita",
       "live": "Probar con mi propio sandbox de PayPal",
@@ -2560,7 +2567,7 @@
       "editHint": "Los pagos ya enviados conservan el correo al que se mandaron."
     },
     "dashboard": {
-      "intro": "Explora tus facturas, tus pagos a contratistas y tus periodos cerrados: toca un cliente, una barra o una porción para filtrar toda la página. El Resumen muestra tu año; aquí lo analizas.",
+      "intro": "Tus cobros de un vistazo: toca un cliente o una barra para filtrar toda la página. El Resumen muestra tu año.",
       "note": "Hecho con AG Studio. Las cifras salen de los cálculos de ContaBu (SQL); el tablero solo las suma y las agrupa.",
       "src": {
         "invoices": "Facturas",
@@ -2613,12 +2620,6 @@
         "open": "Preguntarle al asistente",
         "close": "Cerrar el asistente",
         "rules": "El asistente lee este tablero y sugiere a quién recordarle el pago. Nunca envía nada ni calcula: cada cifra sale de una consulta sobre tus datos. Cada respuesta muestra su tiempo y su costo.",
-        "s1": "¿A quién le recuerdo?",
-        "p1": "¿A quién le recuerdo primero que me pague, y con qué tono?",
-        "s2": "Mejores clientes",
-        "p2": "¿Qué clientes me pagaron más este año?",
-        "s3": "Contratistas",
-        "p3": "¿Cuánto le pagué a cada contratista?",
         "tool": {
           "customerTotals": "Totales por cliente (SQL)",
           "contractorTotals": "Totales por contratista (SQL)",
@@ -2644,16 +2645,44 @@
           "checkNone": "La respuesta no tiene cifras que revisar"
         },
         "capReached": "Llegaste al límite de preguntas al asistente por hoy. El tablero sigue funcionando; puedes volver a preguntar mañana.",
-        "welcome": "¡Hola! Leo este tablero y te ayudo a cobrar.\nPregúntame a quién recordarle primero, quiénes son tus mejores clientes o cuánto gastaste en un mes. Nunca envío nada y cada cifra sale de tus datos.",
+        "welcome": "¡Hola! Te ayudo con las finanzas de tu negocio: ingresos y gastos por mes y por categoría, quién te debe, a quién recordarle y lo que pagaste a tus contratistas.\nNunca envío nada y cada cifra sale de tus datos: el código la revisa antes de mostrártela.",
         "fab": "Pregúntale al asistente",
         "panel": "Asistente de IA",
         "new": "Nuevo",
         "thinking": "Pensando…",
-        "placeholder": "Pregunta por tus facturas, clientes o meses…",
+        "placeholder": "Pregunta por tus ingresos, gastos, cobros o contratistas…",
         "model": "Modelo",
         "stop": "Detener",
         "send": "Enviar",
-        "tourOnly": "En la visita no corre la IA. Para preguntarle al asistente, entra con Google y el código de acceso: ahí usas tu propio libro."
+        "tourOnly": "En la visita no corre la IA. Para preguntarle al asistente, entra con Google y el código de acceso: ahí usas tu propio libro.",
+        "s1": "¿Qué gané más en septiembre?",
+        "p1": "¿Qué fue lo que más gané en septiembre?",
+        "s2": "Mi mejor mes",
+        "p2": "¿Cuál fue mi mejor mes en ingresos y en ganancia?",
+        "s3": "¿En qué gasté más?",
+        "p3": "¿En qué gasté más este año?",
+        "s4": "Gastos de agosto",
+        "p4": "¿Cuánto gasté en agosto y en qué?",
+        "s5": "¿Quién me debe?",
+        "p5": "¿Quién me debe y cuánto está vencido?",
+        "s6": "¿A quién le recuerdo?",
+        "p6": "¿A quién le recuerdo primero que me pague, y con qué tono?",
+        "s7": "Mejores clientes",
+        "p7": "¿Qué clientes me pagaron más este año?",
+        "s8": "Contratistas",
+        "p8": "¿Cuánto le pagué a cada contratista?",
+        "s9": "¿Cuánto en Clayton Ridge?",
+        "p9": "¿Cuánto he gastado en Clayton Ridge HVAC Supply este año?",
+        "s10": "¿Cuánto en gasolina?",
+        "p10": "¿Cuánto he gastado en gasolina?",
+        "s11": "Comisiones de PayPal",
+        "p11": "¿Cuánto me cobró PayPal en comisiones?",
+        "s12": "¿Quién me paga tarde?",
+        "p12": "¿Qué clientes me pagan tarde?",
+        "s13": "¿Qué falta por clasificar?",
+        "p13": "¿Qué falta por clasificar en mis meses cerrados?",
+        "s14": "Septiembre contra agosto",
+        "p14": "¿Cómo me fue en septiembre comparado con agosto, en ingresos y en gastos?"
       },
       "owes": {
         "total": "{{amount}} por cobrar",
@@ -2672,7 +2701,9 @@
         "overdueNone": "Nada vencido ✓",
         "overdueSome": "Necesita un recordatorio",
         "pendingSome": "En periodos cerrados · tu bookkeeper lo está clasificando",
-        "pendingNone": "Periodos cerrados, todo clasificado ✓"
+        "pendingNone": "Periodos cerrados, todo clasificado ✓",
+        "filterOn": "Toca para ver solo estas facturas",
+        "filterOff": "Toca para quitar el filtro"
       },
       "status": {
         "Paid": "Pagada",
@@ -2688,7 +2719,8 @@
         "label": "Buscar cliente",
         "clear": "Quitar el filtro de cliente",
         "none": "Ningún cliente coincide"
-      }
+      },
+      "remindTip": "Abre el recordatorio de esta factura en Cobros; tú lo revisas y lo envías."
     }
   }
 }

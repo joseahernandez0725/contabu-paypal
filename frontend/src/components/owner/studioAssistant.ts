@@ -12,11 +12,23 @@ const OWNER_VIEW_EVENT = "contabu:owner-view";   // el mismo de OwnerApp (sin im
 //   `open_collections` (abre Cobros). Ninguna envía nada: el recordatorio lo revisa y lo manda el dueño.
 // - La IA no calcula: cada cifra sale de una herramienta.
 
-const INSTRUCTIONS = (lang: string) => `You are the collections assistant of a small business that gets paid with PayPal. You live inside its dashboard in ContaBu and answer questions about its invoices, its payments to contractors and the periods its bookkeeper closed.
+// 10-nov: las categorías llegan en inglés (datos en inglés, regla 5); en español, el asistente las nombra como la pantalla.
+// Solo las del negocio (las de sus meses cerrados), para no mandar las 128 en cada turno.
+let CATEGORIES: string[] = [];
+export const setAssistantCategories = (cats: string[]) => { CATEGORIES = cats; };
+const glossary = (lang: string) => lang !== "es" || !CATEGORIES.length ? ""
+  : `
+- Name accounting categories in Spanish exactly as the screen does: ${CATEGORIES
+      .map((c) => `"${c}" = "${i18n.t(`cat.${c}`, { lng: "es", defaultValue: c })}"`).join("; ")}.`;
+
+const INSTRUCTIONS = (lang: string) => `You are the finance assistant of a small business that gets paid with PayPal. You live in its ContaBu portal and answer questions about its finances: income and costs by month and by category, its invoices and who owes it, its payments to contractors, and the periods its bookkeeper closed.
 Rules:
 - Never calculate, estimate, compare or guess a number. The code's tools already give totals, rankings and the highest and lowest values: read them from there. Every figure you give must come from a tool result, copied exactly as the tool returned it. Do not add, subtract or compute percentages yourself: if you need a total, run execute_query with only that measure and the filter you need (for example the month), without grouping by category, so the query returns the total. The code checks every figure you write against the tool results and hides answers with figures it cannot find.
-- Prefer the code's tools: customer_totals (customers), contractor_totals (contractors), month_totals (anything about months), category_totals (categories, biggest expense), reminder_candidates (who to remind). Only if none of them fits, call view_schema and then execute_query.
+- Prefer the code's tools: customer_totals (customers), contractor_totals (contractors), month_totals (income and costs per month, best and worst months), category_totals (income and costs by category, for the year and for each closed month), merchant_totals (how much was spent at each store or supplier), reminder_candidates (who to remind). Only if none of them fits, call view_schema and then execute_query.
 - If month_totals or category_totals returns pending_to_classify with transactions above 0, say how much is still pending to classify: it is not included in income, costs or categories until the bookkeeper classifies it.
+- Never decide what kind of business a merchant is (for example, which ones are gas stations): that would be categorizing, and only rules or the bookkeeper categorize. For a question like "how much on gas", give the category that holds it (car and truck expenses) with its total, and list its merchants with their amounts exactly as merchant_totals returns them, so the owner can see.
+- "Who pays late" is about payment history: use payment_habits_latest_payers_first from customer_totals (paid_after_due_date and habit). Describe each habit in plain words (on_time = always paid on time, sometimes_late = sometimes paid after the due date, often_late = usually pays late); never write the codes. Separately, you may add who has an OVERDUE invoice right now (overdue_usd above 0). An invoice that is not yet due is never late and never overdue: do not list it with the overdue ones.
+- To compare a month with the previous one, use vs_previous_month from month_totals (the code computed the change; positive means it went up). Never subtract months yourself. For two months that are not consecutive, give both figures and say you can't compute the difference.
 - You cannot forecast. If the owner asks about the future (next month, how much they will earn), say that you only see closed periods and invoices, and that you can't predict income. You may add which open invoices are still to collect, with their due date exactly as the tool returns it, without calling it income or earnings.
 - If no tool can answer the question, say that you can't answer it from the dashboard data. Never answer a different question.
 - You cannot send, create, cancel or change anything. Never say you did.
@@ -24,7 +36,7 @@ Rules:
 - To show the owner something on the dashboard, call view_schema and then add_page_filter with the exact field id and values; remove_page_filter clears it.
 - Write every amount in US dollars with a dollar sign, comma thousands and two decimals, for example $2,330.00, also in Spanish.
 - Keep answers short: two to five sentences or a short list. Use the customer names and invoice numbers from the tools.
-- Always reply in ${lang === "es" ? "Spanish" : "English"}, even if the tools return English.
+- Always reply in ${lang === "es" ? "Spanish" : "English"}, even if the tools return English.${glossary(lang)}
 - Call the tools first, then answer once. Do not narrate what you are about to do.`;
 
 const id = (p: string) => `${p}_${Math.random().toString(36).slice(2, 10)}`;
@@ -108,10 +120,11 @@ const serverTool = (name: string, description: string): AgAiTool => ({
   schema: () => ({ name, kind: "server", description, parameters: { type: "object", properties: {}, additionalProperties: false } }),
 });
 const SERVER_TOOLS = [
-  serverTool("customer_totals", "Per customer: collected, outstanding and overdue USD and invoice count, ranked, with the total of all customers. Computed by SQL. Use it for anything about customers or the total collected."),
+  serverTool("customer_totals", "Per customer: collected, outstanding and overdue USD and invoice count, ranked, with the total of all customers, and each customer's payment habit (paid invoices, how many after the due date: on_time, sometimes_late, often_late). Computed by SQL. Use it for anything about customers, who pays late, or the total collected."),
   serverTool("contractor_totals", "Per contractor: USD paid with PayPal Payouts and PayPal fees, with the total. Computed by SQL."),
-  serverTool("month_totals", "Income, costs and their difference per closed month, with the highest and lowest months and the totals. Use it for anything about months."),
-  serverTool("category_totals", "Costs by accounting category over the closed months, largest first, with the total. Use it for categories or the biggest expense."),
+  serverTool("month_totals", "Income, costs and their difference per closed month, with the highest and lowest months, the totals, and the change versus the previous closed month (vs_previous_month, computed by the code). Use it for anything about months or to compare a month with the one before."),
+  serverTool("merchant_totals", "Costs per merchant or store (e.g. Home Depot, Shell) over the closed months: grouped by accounting category, the top merchants, and per closed month. Totals only. Use it for how much was spent at a given store or with a given supplier."),
+  serverTool("category_totals", "Income and costs by accounting category, largest first: for all closed months together and for each closed month (by_month). Use it for categories, the biggest expense or income source, or what a given month's income or costs were made of."),
 ];
 
 /** Abre Cobros para que el dueño revise y mande el recordatorio (no envía nada). */

@@ -14,7 +14,9 @@ import { PAYPAL_DEMO } from "../../demo";
 // la marca de la firma. Unificar solo si aparece una tercera cáscara (DEUDA TECNICA.md, ⚫ #32).
 
 export type OwnerView = "summary" | "dashboard" | "accounts" | "invoices" | "contractors" | "settings";
-export const OWNER_ORDER: OwnerView[] = ["summary", "dashboard", "accounts", "invoices", "contractors", "settings"];
+// 10-nov (Jose): Análisis vive DENTRO de Cobros, en su propia pestaña ("dentro pero separado"): sale del menú, pero la ruta
+// "dashboard" sigue existiendo (Cobros › Análisis), así la visita y los botones que llevan ahí no cambian.
+export const OWNER_ORDER: OwnerView[] = ["summary", "accounts", "invoices", "contractors", "settings"];
 
 const ic = (d: ReactNode) => (
   <svg viewBox="0 0 24 24" className="size-[18px] shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -129,7 +131,7 @@ export default function OwnerSidebar({ view, onNavigate, company, companies, onS
         </div>
         <div className="space-y-0.5">
           {OWNER_ORDER.filter((v) => !hidden.includes(v)).map((v) => {
-            const active = view === v;
+            const active = view === v || (v === "invoices" && view === "dashboard");
             return (
               <button key={v} onClick={() => { onNavigate(v); onClose(); }} aria-label={t(`owner.nav.${v}`)}
                       className={`w-full h-9 flex items-center gap-2.5 rounded-lg text-sm text-start transition-colors ${

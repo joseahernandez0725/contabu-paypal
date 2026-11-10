@@ -66,9 +66,29 @@ function useCountUp(target: number) {
 // 8-nov (muchos clientes): a la vista, los 5 que más urge cobrar (lo vencido primero); el resto, en Cobros.
 const OWES_SHOWN = 5;
 
+/** ¿Alguien debe algo en TODO el negocio, sin filtros de página ni cruzados? Solo se pregunta cuando `ask` (lista vacía). */
+function useOwedOutside(params: any, ask: boolean): boolean {
+  const { widgetApi, dataMapping } = params;
+  const [owed, setOwed] = useState(false);
+  const fields = ["open", "overdue"].flatMap((k) => dataMapping?.[k] ?? []);
+  useEffect(() => {
+    if (!ask || !fields.length) { setOwed(false); return; }
+    let alive = true;
+    widgetApi.getData({ fields }, { filter: false, crossFilter: "none", queryId: "owed-outside" }).then((res: any) => {
+      if (!alive || res.replaced) return;
+      setOwed((res.results?.rows ?? []).some((r: any) => Object.values(r).some((v) => Number(v) > 0.004)));
+    }).catch(() => alive && setOwed(false));
+    return () => { alive = false; };
+  }, [ask, widgetApi]);   // eslint-disable-line react-hooks/exhaustive-deps
+  return owed;
+}
+
 function WhoOwes(params: any) {
   const { t, i18n } = useTranslation();
   const rows = useRows(params);
+  // Los hooks van antes del "cargando" (regla de React): lista vacía = ya cargó y nadie debe en esta vista.
+  const empty = rows != null && !rows.some((r) => (Number(r.open) || 0) + (Number(r.overdue) || 0) > 0.004);
+  const owedOutside = useOwedOutside(params, empty);
   if (!rows) return <AgLoadingOverlay />;
   const owing = rows.map((r) => ({ customer: r.customer as string, open: Number(r.open) || 0, overdue: Number(r.overdue) || 0,
                                    days: Number(r.days_overdue) || 0 }))
@@ -76,7 +96,9 @@ function WhoOwes(params: any) {
     .sort((a, b) => b.overdue - a.overdue || b.days - a.days || b.open - a.open);
   const total = owing.reduce((s, r) => s + r.open + r.overdue, 0);
   // 9-nov (revisión externa): con un cliente elegido que no debe nada, "Todos te pagaron" era falso; se dice lo de la selección.
-  const filtered = (params.widgetApi.getCrossFilterSelections?.() ?? []).some((x: any) => x.values?.length);
+  // 🔄 10-nov: los botones de cliente son un filtro de PÁGINA (no un filtro cruzado), así que no basta mirar la selección:
+  // si aquí no debe nadie, se pregunta a AG Studio por todo el negocio, sin filtros; si alguien debe, es la selección.
+  const filtered = owedOutside || (params.widgetApi.getCrossFilterSelections?.() ?? []).some((x: any) => x.values?.length);
   const click = (customer: string) => {
     const f = (params.dataMapping?.customer ?? [])[0];
     if (f) params.widgetApi.toggleCrossFilter({ type: "value", field: f, value: customer, group: 0 });
@@ -166,24 +188,65 @@ const TONE: Record<Tone, string> = {
   good: "bg-emerald-50 text-emerald-700", warn: "bg-amber-50 text-amber-700", info: "bg-sky-50 text-[#0070BA]", bad: "bg-rose-50 text-rose-700", neutral: "bg-slate-100 text-slate-600",
 };
 
+// 10-nov (Jose): tocar "Por cobrar" o "Vencido" filtra todo el tablero a esas facturas (filtro cruzado por el estado); otro
+// toque lo quita. El valor viene del id del widget, no del texto: los datos van en inglés (regla 5).
+const KPI_FILTER: Record<string, string> = { open: "Open", overdue: "Overdue" };
+
 function Kpi(params: any) {
   const { t, i18n } = useTranslation();
-  const rows = useRows(params);
+  // Solo la cifra: el campo de estado (si hay) es para filtrar, no para agrupar la consulta.
+  const rows = useRows({ ...params, dataMapping: { value: params.dataMapping?.value } });
+  const statusField = (params.dataMapping?.status ?? [])[0];
+  const filterValue = statusField ? KPI_FILTER[params.widgetId] : undefined;
+  const active = !!filterValue && (params.widgetApi.getCrossFilterSelections?.() ?? [])
+    .some((x: any) => (x.values ?? []).includes(filterValue));
   const value = rows ? Number(rows[0]?.value ?? 0) : 0;
   const shown = useCountUp(value);
   const cfg = KPI[params.widgetId] ?? KPI.collected;
   if (!rows) return <AgLoadingOverlay />;
   const tone = cfg.tone(value);
   const hint = cfg.hint?.(value);
+  const Box = filterValue ? "button" : "div";
   return (
-    <div className="h-full flex items-center gap-3 px-3 font-sans">
+    <Box {...(filterValue ? {
+           type: "button", "aria-pressed": active, title: t(active ? "owner.dashboard.kpi.filterOff" : "owner.dashboard.kpi.filterOn"),
+           onClick: () => params.widgetApi.toggleCrossFilter({ type: "value", field: statusField, value: filterValue, group: 0 }),
+         } : {})}
+         className={`h-full w-full flex items-center gap-3 px-3 font-sans text-start rounded-xl ${filterValue ? "cursor-pointer hover:bg-slate-50" : ""} ${
+           active ? "ring-2 ring-inset ring-[#0070BA]/60 bg-sky-50/50" : ""}`}>
       <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${TONE[tone]}`}>{ic(cfg.icon)}</span>
       <div className="min-w-0">
         <div className={`text-xl font-semibold tabular-nums leading-tight ${tone === "bad" ? "text-rose-700" : "text-slate-900"}`}>{usd(shown, i18n.language)}</div>
         <div className="line-clamp-2 text-xs leading-tight text-slate-500">{t(`owner.dashboard.w.${cfg.label}`)}</div>
         {hint && <div className={`line-clamp-1 text-[11px] ${tone === "bad" ? "text-rose-700" : tone === "warn" ? "text-amber-700" : "text-emerald-700"}`}>{t(`owner.dashboard.kpi.${hint}`)}</div>}
       </div>
-    </div>
+    </Box>
+  );
+}
+
+// ── "Recordar" dentro de la tabla de AG Grid (10-nov, Jose) ──────────────────────────────────────────────────────────
+// La tabla es la nativa de AG Studio (`grid`); su opción `createCellRenderer` dibuja la columna Estado con un botón
+// "Recordar" en las facturas sin pagar. El botón NO envía nada: lleva a Cobros › Facturas con el recordatorio de ESA
+// factura abierto, y el dueño lo revisa y lo envía (la IA nunca envía; el código tampoco sin el dueño).
+export const REMIND_EVENT = "contabu:remind-invoice";   // detail: id de la factura
+const LINK_ID = { id: "invoices.invoice_id", aggregation: "first" as const };
+const LINK_STATUS = { id: "invoices.status", aggregation: "first" as const };
+
+// En `ag-studio-react` el renderer es un componente de React (✅ 10-nov: un elemento del DOM rompía la tabla).
+function RemindCell(p: any) {
+  const status = p.getLinkedValue?.(LINK_STATUS);
+  const id = Number(p.getLinkedValue?.(LINK_ID));
+  return (
+    <span className="inline-flex items-center gap-2">
+      {p.value}
+      {(status === "Open" || status === "Overdue") && !!id && !p.node?.rowPinned && !p.node?.footer && !p.node?.group && (
+        <button type="button" title={i18n.t("owner.dashboard.remindTip")}
+                onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent(REMIND_EVENT, { detail: id })); }}
+                className="rounded-full bg-[#FFC439] px-2 py-0.5 text-[11px] font-semibold leading-4 text-[#003087] hover:bg-[#f2ba36]">
+          {i18n.t("owner.dashboard.owes.remind")}
+        </button>
+      )}
+    </span>
   );
 }
 
@@ -271,9 +334,17 @@ function CustomerSearch(params: any) {
 
 const noEdit = (params: any) => params.createDefaults({ dataMappingItems: [] });
 
-export function contabuWidgets(): any {
+export function contabuWidgets({ canRemind = false }: { canRemind?: boolean } = {}): any {
   // `as any`: el registro de tipos de AG Studio no conoce nuestros ids de widget (se validan en tiempo de ejecución).
   return createWidgets({
+    // La tabla nativa, con "Recordar" en la columna marcada (`context.remind`); en la visita y en la vista previa, no.
+    overrides: canRemind ? [{
+      id: "grid",
+      options: {
+        createCellRenderer: (field: any) => (field?.context?.remind ? RemindCell : undefined),
+        getLinkedFields: (field: any) => (field?.context?.remind ? [LINK_ID, LINK_STATUS] : undefined),
+      },
+    }] : [],
     additionalTypes: [
       {
         id: "contabu-who-owes", label: i18n.t("owner.dashboard.w.whoOwes"), comp: WhoOwes, form: noEdit, toolbar: [],
@@ -299,7 +370,9 @@ export function contabuWidgets(): any {
       },
       {
         id: "contabu-kpi", label: i18n.t("owner.dashboard.w.kpi"), comp: Kpi, form: noEdit, toolbar: [],
-        dataMapping: { value: { type: "field", supportedRoles: ["numeric"], requires: { cardinality: "one" }, required: true } },
+        dataMapping: { value: { type: "field", supportedRoles: ["numeric"], requires: { cardinality: "one" }, required: true },
+                       status: { type: "field", supportedRoles: ["category"], requires: { cardinality: "many" } } },
+        featureConfig: { crossFilter: { supportsHighlight: false } },
         defaultSize: { width: 200, height: 100 }, minSize: { width: 140, height: 72 },
         ai: { description: "A single total (USD) with an icon and a color that says if it is good or bad." },
       },
