@@ -84,10 +84,10 @@ def main() -> int:
                and tk["arguments"]["items"][0]["unit_amount"]["value"] == "500.00", (tk.get("tool"), tk.get("mode"), rec))
         import paypal_toolkit as pk
         ai = b.get("ai") or {}
-        expect("🔒 la IA solo puede recibir crear (borrador) y leer; enviar, recordar, cancelar y QR son del código",
-               set(ai.get("offered_tools") or []) == {"create_invoice", "get_invoice", "list_invoices"}
+        expect("🔒 el modelo del dictado no recibe herramientas, y el Toolkit solo permitiría crear (borrador) y leer; enviar, recordar, cancelar y QR son del código",
+               ai.get("model_tools") == [] and set(ai.get("toolkit_ai_permitted") or []) == {"create_invoice", "get_invoice", "list_invoices"}
                and not (set(pk.ai_tools()) & pk.CODE_ONLY) and ai.get("waits_for_owner") == "send_invoice",
-               (ai.get("offered_tools"), ai.get("waits_for_owner")))
+               (ai.get("model_tools"), ai.get("toolkit_ai_permitted"), ai.get("waits_for_owner")))
         try:
             pk.openai_spec("send_invoice")
             expect("send_invoice nunca se le puede dar a la IA", False, "se dio")

@@ -15,6 +15,7 @@ La venta entra con el `payment_id` de PayPal, que es el `transaction_id` de Tran
 reconoce y no la duplica, y trae su comisión aparte (Merchant fees).
 """
 
+import json
 import os
 import re
 import secrets
@@ -33,7 +34,7 @@ import paypal
 from auth import client_writable_company, current_user, effective_role, owned_company
 from db import get_session
 from models import (AccountType, Company, Invoice, InvoiceCustomer, InvoiceOffline, InvoiceProfile, InvoiceSeries,
-                    PayPalConnection, PayPalEntry, User)
+                    PayPalConnection, PayPalEntry, Transaction, User)
 from rules import load_rules
 
 router = APIRouter()
@@ -278,7 +279,7 @@ def _invoicer(company: Company, p: Optional[InvoiceProfile]) -> dict:
 
 
 def _out(inv: Invoice, customers: dict[int, InvoiceCustomer], today: date, offline: Optional[InvoiceOffline] = None,
-         refunds_in_books: frozenset = frozenset()) -> dict:
+         refunds_in_books: frozenset = frozenset(), paid_so_far: Decimal = Decimal(0)) -> dict:
     c = customers.get(inv.customer_id or 0)
     # Devuelta: ¿ya está la devolución en el libro? Por PayPal, si la sincronización trajo un reembolso, reversión o
     # contracargo de ESTE cobro (`reference_id`); fuera de PayPal, si su fila del banco ya se emparejó (3-nov).
@@ -287,6 +288,8 @@ def _out(inv: Invoice, customers: dict[int, InvoiceCustomer], today: date, offli
     return {"id": inv.id, "number": inv.number, "status": inv.status,
             "overdue": inv.status in OPEN and inv.due_date < today,
             "customer": _customer_out(c) if c else None, "concept": inv.concept, "amount": str(inv.amount),
+            # Abierta con pagos parciales (9-nov): lo ya cobrado; lo que falta es `amount - paid_so_far`.
+            "paid_so_far": str(paid_so_far) if inv.status in OPEN else "0",
             "currency": inv.currency, "due_date": inv.due_date.isoformat(), "recipient_view_url": inv.recipient_view_url,
             "sent_at": inv.sent_at.isoformat() if inv.sent_at else None,
             "paid_at": inv.paid_at.isoformat() if inv.paid_at else None,
@@ -299,6 +302,25 @@ def _out(inv: Invoice, customers: dict[int, InvoiceCustomer], today: date, offli
             # Pagada (o devuelta) FUERA de PayPal (3-nov, `invoice_offline.py`): el último registro y si ya está en el banco.
             "offline": {"kind": offline.kind, "method": offline.method, "day": offline.day.isoformat(),
                         "in_bank": offline.bank_tx_id is not None} if offline else None}
+
+
+# 9-nov (revisión externa): un pago PARCIAL por PayPal entra al libro cuando llega, por su monto, y queda ligado a su
+# factura con una marca `PayPalEntry` "<payment_id>:inv" (sin migración: la rama del concurso no agrega columnas).
+INVOICE_PAID_MARK = "INVOICE_PAID"
+
+
+def paid_so_far_subquery(company_id: int):
+    """Por factura, lo ya cobrado en pagos parciales: por PayPal (las marcas) y fuera de PayPal (`InvoiceOffline`). Solo
+    se usa con facturas ABIERTAS: de una pagada del todo cuenta el monto completo. Columnas: invoice_id, paid."""
+    pp = (select(Invoice.id.label("invoice_id"), Transaction.amount.label("paid"))
+          .select_from(PayPalEntry)
+          .join(Invoice, (Invoice.paypal_invoice_id == PayPalEntry.reference_id) & (Invoice.company_id == PayPalEntry.company_id))
+          .join(Transaction, Transaction.id == PayPalEntry.transaction_id)
+          .where(PayPalEntry.company_id == company_id).where(PayPalEntry.event_code == INVOICE_PAID_MARK))
+    off = (select(InvoiceOffline.invoice_id.label("invoice_id"), InvoiceOffline.amount.label("paid"))
+           .where(InvoiceOffline.company_id == company_id).where(InvoiceOffline.kind == "payment"))
+    both = pp.union_all(off).subquery()
+    return select(both.c.invoice_id, func.sum(both.c.paid).label("paid")).group_by(both.c.invoice_id).subquery()
 
 
 def payer_history(session: Session, company_id: int) -> dict[int, dict]:
@@ -343,7 +365,19 @@ def _view(session: Session, company_id: int) -> dict:
         .select_from(InvoiceOffline).join(Invoice, Invoice.id == InvoiceOffline.invoice_id)
         .where(InvoiceOffline.company_id == company_id)
     ).one()
-    open_, paid_year = open_ - part_paid, paid_year + part_paid_year - part_refunded_year
+    # Parciales POR PAYPAL (9-nov): ya están en el libro; bajan "por cobrar" y suben "cobrado" igual que los de fuera.
+    pp_paid, pp_paid_year = session.exec(
+        select(func.coalesce(func.sum(Transaction.amount), 0),
+               func.coalesce(func.sum(case((func.extract("year", Transaction.date) == today.year, Transaction.amount), else_=0)), 0))
+        .select_from(PayPalEntry)
+        .join(Invoice, (Invoice.paypal_invoice_id == PayPalEntry.reference_id) & (Invoice.company_id == PayPalEntry.company_id))
+        .join(Transaction, Transaction.id == PayPalEntry.transaction_id)
+        .where(PayPalEntry.company_id == company_id).where(PayPalEntry.event_code == INVOICE_PAID_MARK)
+        .where(Invoice.status.in_(OPEN))
+    ).one()
+    open_, paid_year = open_ - part_paid - pp_paid, paid_year + part_paid_year - part_refunded_year + pp_paid_year
+    sofar = paid_so_far_subquery(company_id)
+    paid_by_inv = {iid: Decimal(str(p)) for iid, p in session.exec(select(sofar.c.invoice_id, sofar.c.paid)).all()}
     conn = session.exec(select(PayPalConnection).where(PayPalConnection.company_id == company_id)).first()
     offline: dict[int, InvoiceOffline] = {}
     for o in session.exec(select(InvoiceOffline).where(InvoiceOffline.company_id == company_id).order_by(InvoiceOffline.id)).all():
@@ -353,7 +387,7 @@ def _view(session: Session, company_id: int) -> dict:
                                   .where(PayPalEntry.reference_id.is_not(None))).all())
     history = payer_history(session, company_id)
     new = {"paid": 0, "late": 0, "kind": "new", "tone": "friendly"}
-    return {"invoices": [{**_out(i, customers, today, offline.get(i.id), refs),
+    return {"invoices": [{**_out(i, customers, today, offline.get(i.id), refs, paid_by_inv.get(i.id, Decimal(0))),
                           "payer": history.get(i.customer_id, new) if i.customer_id else None} for i in invs],
             "summary": {"outstanding": str(open_), "overdue": int(overdue), "collected_this_year": str(paid_year)},
             "paypal_connected": conn is not None}
@@ -535,6 +569,12 @@ def register_payment(session: Session, company: Company, inv: Invoice, invoice_j
             added = True
         else:
             tx = None
+        tx_id = tx.id if tx else (entry.transaction_id if entry else None)
+        mark = f"{pid}:inv"
+        if tx_id and not session.exec(select(PayPalEntry.id).where(PayPalEntry.company_id == company.id)
+                                      .where(PayPalEntry.paypal_id == mark)).first():
+            session.add(PayPalEntry(company_id=company.id, paypal_id=mark, event_code=INVOICE_PAID_MARK,
+                                    transaction_id=tx_id, reference_id=inv.paypal_invoice_id))
         inv.payment_id = pid
         inv.transaction_id = (tx.id if tx else entry.transaction_id) if (tx or entry) else inv.transaction_id
     return added
@@ -570,19 +610,26 @@ def refresh_invoices(company_id: int, user: User = Depends(current_user), sessio
 
 
 def _apply_state(session: Session, company: Company, inv: Invoice, res: dict) -> bool:
-    """Deja la factura como dice PayPal y, si está PAGADA del todo, asienta el cobro. Sin commit. ¿Cambió el estado?"""
+    """Deja la factura como dice PayPal y asienta lo cobrado por PayPal: cada pago, parcial o final, por su monto (9-nov;
+    antes un parcial esperaba a que la factura quedara pagada del todo). Sin commit. ¿Cambió el estado?"""
     status = res.get("status") or inv.status
     changed = status != inv.status
     inv.status, inv.last_checked_at = status, _now()
-    if status == "PAID":
+    if status in ("PAID", "PARTIALLY_PAID"):
         register_payment(session, company, inv, res)
+    if status == "PAID":
         inv.paid_at = inv.paid_at or _now()
     session.add(inv)
     return changed
 
 
+async def _raw_body(request: Request) -> bytes:
+    return await request.body()
+
+
 @router.post("/api/paypal/webhook/{connection_id}")
-def paypal_webhook(connection_id: int, event: dict, request: Request, session: Session = Depends(get_session)):
+def paypal_webhook(connection_id: int, request: Request, raw: bytes = Depends(_raw_body),
+                   session: Session = Depends(get_session)):
     """El aviso de PayPal (PÚBLICO: lo llama PayPal; se verifica su firma con PayPal, deuda #37). No se le cree al
     aviso: `INVOICING.INVOICE.PAID` también salta con pagos parciales o pendientes, así que el estado y los montos se
     leen de la factura. Repetido no duplica (`register_payment`). Error de PayPal → 502, y PayPal reintenta."""
@@ -590,7 +637,13 @@ def paypal_webhook(connection_id: int, event: dict, request: Request, session: S
     if conn is None:
         raise HTTPException(status_code=404, detail="connection not found")
     try:
-        if not paypal.webhook_is_genuine(conn, request.headers, event):
+        event = json.loads(raw)
+        if not isinstance(event, dict):
+            raise ValueError
+    except ValueError:
+        raise HTTPException(status_code=400, detail="bad body")
+    try:
+        if not paypal.webhook_is_genuine(conn, request.headers, raw):
             raise HTTPException(status_code=400, detail="bad signature")
         if str(event.get("event_type") or "").startswith("CUSTOMER.DISPUTE."):   # disputas (3-nov): se relee de PayPal
             import paypal_disputes                       # aquí: `paypal_disputes` importa de este módulo

@@ -64,7 +64,8 @@
     "demoNotEnabled": "El acceso al demo todavía no está activado. Entra con Google.",
     "liveHint": "Demo en vivo: corre tú los agentes sobre tu propia copia de los libros. Necesitas un código de acceso.",
     "demoHintPaypal": "Sin cuenta. Solo lectura: un negocio ya conectado al sandbox de PayPal.",
-    "liveHintPaypal": "Demo en vivo: tu propio libro sembrado, donde actúas como el dueño y puedes conectar tu propia app de sandbox de PayPal. Necesitas un código de acceso."
+    "liveHintPaypal": "Demo en vivo: tu propio libro sembrado, donde actúas como el dueño y puedes conectar tu propia app de sandbox de PayPal. Necesitas un código de acceso.",
+    "subtitlePaypal": "Factura y cobra con PayPal. Tu bookkeeper lleva los libros."
   },
   "review": {
     "count": "{{count}} movimientos",
@@ -1145,20 +1146,6 @@
     "pendingInfo_one": "{{count}} movimiento sigue sin categoría. Ponle una aquí abajo o crea una regla en Movimientos.",
     "pendingInfo_other": "{{count}} movimientos siguen sin categoría. Ponles una aquí abajo o crea una regla en Movimientos."
   },
-  "billing": {
-    "title": "Plan",
-    "current": "Plan activo: {{n}} transacciones/mes.",
-    "free": "Plan gratis. Suscríbete para subir tu límite mensual de movimientos.",
-    "txMonth": "{{n}} transacciones/mes",
-    "yourPlan": "Tu plan",
-    "choose": "Elegir",
-    "redirecting": "Redirigiendo…",
-    "securedByStripe": "Pago seguro con Stripe. Cancela cuando quieras.",
-    "success": "Suscripción activa — {{n}} transacciones/mes. 🎉",
-    "pending": "Pago recibido; finalizando tu suscripción…",
-    "error": "No se pudo confirmar el pago.",
-    "canceled": "Pago cancelado — no se hizo ningún cobro."
-  },
   "verify": {
     "title": "Verifica tu correo — te enviamos un enlace a {{email}}.",
     "resend": "Reenviar",
@@ -1960,7 +1947,8 @@
       "confirmNegative": "Saldo negativo en su sección, casi siempre un error de clasificación: {{list}}.",
       "reopen": "Reabrir",
       "error": "No se pudo actualizar el periodo. Inténtalo de nuevo.",
-      "waiting": "En días de espera: se podrá cerrar el {{date}}"
+      "waiting": "En días de espera: se podrá cerrar el {{date}}",
+      "closedOnDate": "Cerrado el {{date}}"
     },
     "year": {
       "pick": "Año",
@@ -2049,7 +2037,7 @@
       "meta": "{{model}} · {{secs}} s · {{cost}} · {{tokens}} tokens",
       "voice": {
         "read": "NVIDIA Nemotron leyó tu dictado, con el nombre del cliente oculto, y extrajo el monto, la fecha de vencimiento y la descripción:",
-        "tool": "Preparó la herramienta {{tool}} del PayPal Agent Toolkit como borrador ({{toolkit}})",
+        "tool": "El código de ContaBu llenó la herramienta {{tool}} del PayPal Agent Toolkit como borrador ({{toolkit}})",
         "toolDetail": "{{amount}} por \"{{concept}}\" · a nombre de {{email}}, de tu cliente guardado",
         "noTool": "Todavía no hay borrador: completa el monto, la descripción o el cliente",
         "checked": "El código de ContaBu lo validó: cliente guardado, monto válido y la fecha de vencimiento que calculó",
@@ -2173,9 +2161,9 @@
         "b": "Un dictado real, como lo ve el dueño en su propio libro. La visita no llama a la IA: esta es una corrida medida.",
         "s1": "Un modelo de IA abierto leyó el dictado, con el nombre del cliente oculto",
         "s1d": "\"Factúrale a [CUSTOMER] 875 dólares por la reparación del calentador, vence el próximo viernes, y envíala ya\"",
-        "s2": "Preparó la herramienta create_invoice del PayPal Agent Toolkit, como borrador",
+        "s2": "El código de ContaBu llenó con esos datos la herramienta create_invoice del PayPal Agent Toolkit, como borrador",
         "s2d": "$875.00 por \"reparación del calentador\" · al correo del cliente guardado",
-        "s3": "El código de ContaBu revisó el cliente y el monto, y calculó la fecha de vencimiento",
+        "s3": "El código revisó el cliente y el monto, calculó la fecha de vencimiento y validó el borrador con el esquema del Toolkit",
         "s4": "send_invoice espera al dueño: \"envíala ya\" no hizo nada"
       },
       "contractors": {
@@ -2227,7 +2215,7 @@
       "sandbox": "Todo corre en el sandbox de PayPal. No se mueve dinero real.",
       "start": "Empezar la visita",
       "live": "Probar con mi propio sandbox de PayPal",
-      "mission": "Queremos que PayPal se convierta en la cuenta principal de los pequeños negocios, donde cobran, facturan y pagan, mientras el bookkeeper lleva su contabilidad."
+      "mission": "Queremos que PayPal se convierta en la cuenta principal de los pequeños negocios, donde cobran, facturan y pagan, y que llegue a ellos de la mano del bookkeeper que ya les lleva los libros."
     },
     "collect": {
       "open": "Cobrar",
@@ -2675,14 +2663,16 @@
         "late_other": "{{count}} días de atraso",
         "notDue": "Aún no vence",
         "remind": "Recordar",
-        "all": "Ver los {{count}} en Cobros"
+        "all": "Ver los {{count}} en Cobros",
+        "noneFiltered": "Nada por cobrar en esta selección",
+        "noneFilteredHint": "Otros clientes pueden deberte: quita el filtro para verlos."
       },
       "kpi": {
         "openNone": "Nada pendiente",
         "overdueNone": "Nada vencido ✓",
         "overdueSome": "Necesita un recordatorio",
-        "pendingSome": "Tu bookkeeper lo está clasificando",
-        "pendingNone": "Todo clasificado ✓"
+        "pendingSome": "En periodos cerrados · tu bookkeeper lo está clasificando",
+        "pendingNone": "Periodos cerrados, todo clasificado ✓"
       },
       "status": {
         "Paid": "Pagada",

@@ -829,16 +829,20 @@ def _drop_webhook(conn: PayPalConnection) -> None:
         log.warning("[paypal webhook] conexión %s: no se borró (%s)", conn.id, e.code)
 
 
-def webhook_is_genuine(conn: PayPalConnection, headers, event: dict) -> bool:
-    """Le pregunta a PayPal si este aviso es suyo y de este webhook. Error de PayPal → `PayPalError` (que reintente)."""
+def webhook_is_genuine(conn: PayPalConnection, headers, raw_event: bytes) -> bool:
+    """Le pregunta a PayPal si este aviso es suyo y de este webhook. Error de PayPal → `PayPalError` (que reintente).
+    9-nov (revisión externa): la firma cubre los BYTES que PayPal mandó; un JSON vuelto a escribir (acentos escapados,
+    otro orden, otros decimales) puede no coincidir. Por eso `webhook_event` viaja tal como llegó, sin re-serializar."""
     if not conn.webhook_id:
         return False
     use_connection(conn)
-    return api("POST", "/v1/notifications/verify-webhook-signature", json={
+    head = json.dumps({
         "auth_algo": headers.get("paypal-auth-algo"), "cert_url": headers.get("paypal-cert-url"),
         "transmission_id": headers.get("paypal-transmission-id"), "transmission_sig": headers.get("paypal-transmission-sig"),
-        "transmission_time": headers.get("paypal-transmission-time"), "webhook_id": conn.webhook_id,
-        "webhook_event": event}).get("verification_status") == "SUCCESS"
+        "transmission_time": headers.get("paypal-transmission-time"), "webhook_id": conn.webhook_id})
+    body = head[:-1].encode() + b', "webhook_event": ' + raw_event.strip() + b"}"
+    return api("POST", "/v1/notifications/verify-webhook-signature",
+               content=body).get("verification_status") == "SUCCESS"
 
 
 @router.get("/api/owner/companies/{company_id}/accounts")

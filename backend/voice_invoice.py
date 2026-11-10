@@ -242,5 +242,9 @@ def parse_voice(company_id: int, payload: VoiceIn, user: User = Depends(current_
             "sent_to_ai": masked, "toolkit": toolkit,
             # Lo que hizo la IA, para el panel "What the AI did": modelo, tiempo y costo REALES de esta llamada.
             "ai": {"model": u.model, "latency_ms": u.latency_ms, "tokens": u.prompt_tokens + u.completion_tokens,
-                   "cost_usd": u.cost_usd, "offered_tools": paypal_toolkit.ai_tools(),
+                   "cost_usd": u.cost_usd,
+                   # 9-nov (revisión externa): el modelo del dictado NO recibe herramientas (devuelve JSON propio); el
+                   # `create_invoice` lo llena el código. `toolkit_ai_permitted` es lo que la configuración del Toolkit
+                   # permitiría ofrecer a una IA, no lo que se le dio.
+                   "model_tools": [], "toolkit_ai_permitted": paypal_toolkit.ai_tools(),
                    "waits_for_owner": "send_invoice"}}

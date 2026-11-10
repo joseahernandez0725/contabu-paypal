@@ -543,31 +543,6 @@ export async function cleanupRules(): Promise<{ removed: number }> {
   return res.json();
 }
 
-// --- Pagos (Stripe Checkout, modelo M5 por volumen) ---
-// Crea la sesión de pago para un tier (cupo de tx/mes) y devuelve la URL de Stripe Checkout.
-export async function createCheckout(quota: number): Promise<{ url: string }> {
-  const res = await fetch(`${API}/api/companies/${cid()}/checkout`, {
-    method: "POST",
-    headers: { ...(await authHeaders()), "Content-Type": "application/json" },
-    body: JSON.stringify({ quota }),
-  });
-  if (!res.ok) throw new Error("No se pudo iniciar el pago");
-  return res.json();
-}
-
-// Tras el redirect de éxito de Stripe: confirma el pago y deja la empresa suscrita.
-export async function confirmCheckout(
-  session_id: string,
-): Promise<{ ok: boolean; status?: string; tx_quota?: number }> {
-  const res = await fetch(`${API}/api/companies/${cid()}/checkout/confirm`, {
-    method: "POST",
-    headers: { ...(await authHeaders()), "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id }),
-  });
-  if (!res.ok) throw new Error("No se pudo confirmar el pago");
-  return res.json();
-}
-
 // --- Agente auditor: escanea categorizaciones sospechosas (1 click, determinista) ---
 export interface AuditFinding {
   type: string;                 // inconsistent_merchant | sign_mismatch | uncategorized
@@ -1496,6 +1471,7 @@ export interface OwnerInvoice {
   id: number; number: string | null; status: string; overdue: boolean; customer: Customer | null; concept: string;
   amount: string; currency: string; due_date: string; recipient_view_url: string | null; sent_at: string | null;
   paid_at: string | null; in_books: boolean;
+  paid_so_far?: string;   // abierta con pagos parciales (9-nov): lo ya cobrado; falta amount - paid_so_far
   refund_in_books: boolean | null;   // solo si está devuelta: ¿ya está la devolución en el libro? (3-nov)
   series_id: number | null;          // la generó una factura recurrente (4-nov)
   auto_reminders_stopped: boolean;   // el dueño detuvo sus recordatorios automáticos (5-nov; irreversible en PayPal)
@@ -1711,10 +1687,10 @@ export interface VoiceResult {
   ai?: AiCall;
 }
 /** Lo que hizo la IA en UNA llamada (panel "What the AI did"): modelo, tiempo y costo reales, y qué herramientas podía
- *  recibir del Toolkit; `waits_for_owner` es la que solo el código llama cuando el dueño confirma. */
+ *  recibió (ninguna en el dictado) y cuáles permitiría la configuración del Toolkit; `waits_for_owner` es la que solo el código llama cuando el dueño confirma. */
 export interface AiCall {
   model: string; latency_ms: number; tokens: number; cost_usd: number | null;
-  offered_tools?: string[]; waits_for_owner?: string;
+  model_tools?: string[]; toolkit_ai_permitted?: string[]; waits_for_owner?: string;
 }
 export const voiceInvoice = (text: string, lang: string, customerId?: number) =>
   ownerCall<VoiceResult>("/invoices/voice", "POST", { text, lang, ...(customerId ? { customer_id: customerId } : {}) });

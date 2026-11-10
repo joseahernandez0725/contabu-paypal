@@ -75,6 +75,8 @@ function WhoOwes(params: any) {
     .filter((r) => r.open + r.overdue > 0.004)
     .sort((a, b) => b.overdue - a.overdue || b.days - a.days || b.open - a.open);
   const total = owing.reduce((s, r) => s + r.open + r.overdue, 0);
+  // 9-nov (revisión externa): con un cliente elegido que no debe nada, "Todos te pagaron" era falso; se dice lo de la selección.
+  const filtered = (params.widgetApi.getCrossFilterSelections?.() ?? []).some((x: any) => x.values?.length);
   const click = (customer: string) => {
     const f = (params.dataMapping?.customer ?? [])[0];
     if (f) params.widgetApi.toggleCrossFilter({ type: "value", field: f, value: customer, group: 0 });
@@ -89,8 +91,8 @@ function WhoOwes(params: any) {
         <div className="flex-1 grid place-items-center text-center">
           <div>
             <div className="mx-auto mb-2 grid size-10 place-items-center rounded-full bg-emerald-100 text-emerald-700 text-xl">✓</div>
-            <p className="text-sm font-semibold text-slate-800">{t("owner.dashboard.owes.none")}</p>
-            <p className="text-xs text-slate-500">{t("owner.dashboard.owes.noneHint")}</p>
+            <p className="text-sm font-semibold text-slate-800">{t(filtered ? "owner.dashboard.owes.noneFiltered" : "owner.dashboard.owes.none")}</p>
+            <p className="text-xs text-slate-500">{t(filtered ? "owner.dashboard.owes.noneFilteredHint" : "owner.dashboard.owes.noneHint")}</p>
           </div>
         </div>
       ) : (

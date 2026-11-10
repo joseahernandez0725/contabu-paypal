@@ -46,7 +46,8 @@
     "demoNotEnabled": "The demo access isn't turned on yet. Sign in with Google instead.",
     "liveHint": "Live demo: run the agents yourself on your own copy of the books. You'll need an access code.",
     "demoHintPaypal": "No account. Read-only: a business already connected to PayPal sandbox.",
-    "liveHintPaypal": "Live demo: your own seeded book, where you act as the owner and can connect your own PayPal sandbox app. You'll need an access code."
+    "liveHintPaypal": "Live demo: your own seeded book, where you act as the owner and can connect your own PayPal sandbox app. You'll need an access code.",
+    "subtitlePaypal": "Invoice and get paid with PayPal. Your bookkeeper keeps the books."
   },
   "review": {
     "count": "{{count}} transactions",
@@ -776,20 +777,6 @@
     "fixRule": "Fix → back to the rule ({{s}})",
     "pendingInfo_one": "{{count}} transaction has no category yet. Set it below, or create a rule in Transactions.",
     "pendingInfo_other": "{{count}} transactions have no category yet. Set them below, or create a rule in Transactions."
-  },
-  "billing": {
-    "title": "Plan",
-    "current": "Active plan: {{n}} transactions/month.",
-    "free": "Free plan. Subscribe to raise your monthly transaction limit.",
-    "txMonth": "{{n}} transactions/mo",
-    "yourPlan": "Your plan",
-    "choose": "Choose",
-    "redirecting": "Redirecting…",
-    "securedByStripe": "Secure payment by Stripe. Cancel anytime.",
-    "success": "Subscription active — {{n}} transactions/month. 🎉",
-    "pending": "Payment received; finalizing your subscription…",
-    "error": "Couldn't confirm the payment.",
-    "canceled": "Checkout canceled — no charge made."
   },
   "rules": {
     "title": "Rules",
@@ -1830,7 +1817,8 @@
       "confirmNegative": "Negative balance in its section, usually a classification error: {{list}}.",
       "reopen": "Reopen",
       "error": "Couldn't update the period. Please try again.",
-      "waiting": "Settlement days: can be closed on {{date}}"
+      "waiting": "Settlement days: can be closed on {{date}}",
+      "closedOnDate": "Closed {{date}}"
     },
     "year": {
       "pick": "Year",
@@ -1919,7 +1907,7 @@
       "meta": "{{model}} · {{secs}} s · {{cost}} · {{tokens}} tokens",
       "voice": {
         "read": "NVIDIA Nemotron read your dictation, with the customer's name hidden, and extracted the amount, due date and description:",
-        "tool": "Prepared the PayPal Agent Toolkit tool {{tool}} as a draft ({{toolkit}})",
+        "tool": "ContaBu's code filled the PayPal Agent Toolkit tool {{tool}} as a draft ({{toolkit}})",
         "toolDetail": "{{amount}} for \"{{concept}}\" · billed to {{email}}, from your saved customer",
         "noTool": "No draft yet: complete the amount, the description or the customer",
         "checked": "ContaBu's code checked it: saved customer, valid amount, and the due date it computed",
@@ -2043,9 +2031,9 @@
         "b": "A real dictation, as the owner sees it in their own book. The tour doesn't call the AI: this is one measured run.",
         "s1": "An open AI model read the dictation, with the customer's name hidden",
         "s1d": "\"Invoice [CUSTOMER] 875 dollars for a furnace repair, due next Friday, and send it right away\"",
-        "s2": "It prepared the PayPal Agent Toolkit tool create_invoice, as a draft",
+        "s2": "ContaBu's code filled the PayPal Agent Toolkit tool create_invoice with those fields, as a draft",
         "s2d": "$875.00 for \"furnace repair\" · billed to the saved customer's email",
-        "s3": "ContaBu's code checked the customer and the amount, and computed the due date",
+        "s3": "The code checked the customer and the amount, computed the due date and validated the draft against the Toolkit's schema",
         "s4": "send_invoice waits for the owner: \"send it right away\" did nothing"
       },
       "contractors": {
@@ -2097,7 +2085,7 @@
       "sandbox": "Everything runs in PayPal's sandbox. No real money moves.",
       "start": "Start the tour",
       "live": "Try it with my own PayPal sandbox",
-      "mission": "We want PayPal to become the main account of small businesses, where they get paid, invoice and pay, while the bookkeeper keeps their books."
+      "mission": "We want PayPal to become the main account of small businesses, where they get paid, invoice and pay, and to reach them through the bookkeeper who already keeps their books."
     },
     "collect": {
       "open": "Collect",
@@ -2545,14 +2533,16 @@
         "late_other": "{{count}} days late",
         "notDue": "Not due yet",
         "remind": "Remind",
-        "all": "See all {{count}} in Invoices"
+        "all": "See all {{count}} in Invoices",
+        "noneFiltered": "Nothing owed in this selection",
+        "noneFilteredHint": "Other customers may still owe you: clear the filter to see them."
       },
       "kpi": {
         "openNone": "Nothing waiting",
         "overdueNone": "Nothing overdue ✓",
         "overdueSome": "Needs a reminder",
-        "pendingSome": "Your bookkeeper is classifying it",
-        "pendingNone": "Everything classified ✓"
+        "pendingSome": "In closed periods · your bookkeeper is classifying it",
+        "pendingNone": "Closed periods fully classified ✓"
       },
       "status": {
         "Paid": "Paid",

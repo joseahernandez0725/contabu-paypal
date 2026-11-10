@@ -20,7 +20,7 @@ import PayPalGuide, { GuideButton } from "./components/owner/PayPalGuide";
 import type { OwnerView } from "./components/owner/OwnerSidebar";
 import { PAYPAL_FROM_KEY } from "./components/owner/ConnectPayPal";
 import { auth } from "./firebase";
-import { getCompanies, getCompany, setActiveCompany, createCompany, getAuditSummary, confirmCheckout, demoDoor, finishPayPalOAuth, type PayPalOAuthResult } from "./api";
+import { getCompanies, setActiveCompany, createCompany, getAuditSummary, demoDoor, finishPayPalOAuth, type PayPalOAuthResult } from "./api";
 import type { AuditBoard } from "./api";
 import type { Company } from "./types";
 
@@ -35,7 +35,6 @@ function App() {
   // que muestra la pestaña (rojo = problemas, ámbar = por revisar), no de dos listas distintas.
   const [problemCount, setProblemCount] = useState(0);
   const [auditCount, setAuditCount] = useState(0); // hallazgos del AUDITOR (badge ámbar — FASE 9)
-  const [billingNote, setBillingNote] = useState<string | null>(null);
   // La misma fila, para la Hoja (14-oct): Auditoría y el Resumen llevan a la transacción EXACTA.
   const [sheetFocus, setSheetFocus] = useState<SheetFocus | null>(null);
   const openInSheet = (f: Omit<SheetFocus, "n">) => {
@@ -168,27 +167,6 @@ function App() {
         : { tone: "error", from, text: `${t(`owner.paypal.err.${["paypal_network", "paypal_not_configured"].includes(e.message) ? e.message : "other"}`)} (${e.message})` }));
   }, [company, t]);
 
-  // Vuelta de Stripe Checkout (?billing=success&session_id=…): confirma el pago y refresca la empresa.
-  useEffect(() => {
-    if (!company) return;
-    const params = new URLSearchParams(window.location.search);
-    const billing = params.get("billing");
-    if (!billing) return;
-    window.history.replaceState({}, "", window.location.pathname); // limpia la URL (evita re-confirmar)
-    if (billing === "success" && params.get("session_id")) {
-      confirmCheckout(params.get("session_id")!)
-        .then((r) => {
-          setBillingNote(r.ok
-            ? t("billing.success", { defaultValue: "Subscription active — {{n}} transactions/month. 🎉", n: r.tx_quota ?? 0 })
-            : t("billing.pending", { defaultValue: "Payment received; finalizing your subscription…" }));
-          getCompany().then(setCompany).catch(() => {});
-        })
-        .catch(() => setBillingNote(t("billing.error", { defaultValue: "Couldn't confirm the payment." })));
-    } else if (billing === "cancel") {
-      setBillingNote(t("billing.canceled", { defaultValue: "Checkout canceled — no charge made." }));
-    }
-  }, [company, t]);
-
   // Verificando sesión de Firebase.
   if (fbUser === undefined) {
     return (
@@ -315,12 +293,6 @@ function App() {
               <div className={`mb-4 flex items-start justify-between gap-3 text-sm rounded-xl px-4 py-2.5 ${ppNotice.tone === "ok" ? "text-emerald-900 bg-emerald-50" : ppNotice.tone === "warn" ? "text-amber-900 bg-amber-50" : "text-rose-900 bg-rose-50"}`}>
                 <span>{ppNotice.text}</span>
                 <button onClick={() => setPpNotice(null)} className="opacity-60 hover:opacity-100 shrink-0" aria-label="dismiss">✕</button>
-              </div>
-            )}
-            {billingNote && (
-              <div className="mb-4 flex items-center justify-between gap-3 text-sm text-brand-green bg-brand-green/10 rounded-xl px-4 py-2.5">
-                <span>{billingNote}</span>
-                <button onClick={() => setBillingNote(null)} className="text-brand-green/70 hover:text-brand-green shrink-0" aria-label="dismiss">✕</button>
               </div>
             )}
             {view === "dashboard" && (

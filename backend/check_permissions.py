@@ -200,7 +200,6 @@ OWNER_ONLY: set[tuple[str, str]] = {
 
 # Rutas que NO se prueban porque no pertenecen al modelo de acceso por libro.
 SKIP: set[tuple[str, str]] = {
-    ("POST", "/api/stripe/webhook"),   # lo llama Stripe con su firma, no un usuario
     ("POST", "/api/paypal/webhook/{connection_id}"),   # lo llama PayPal; check_paypal prueba que sin firma válida → 400
     ("POST", "/api/companies"),        # crea un libro NUEVO: no hay `company_id` que validar (Paso 4)
     ("GET", "/api/public/invoice-logo/{key}"),   # PÚBLICA: la pide PayPal; solo con la clave al azar (check_profile la prueba)

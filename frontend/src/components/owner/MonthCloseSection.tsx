@@ -53,9 +53,10 @@ export default function MonthCloseSection({ canClose }: { canClose: boolean }) {
               {m.pending > 0 && <span className="ms-2 text-amber-700">{t("owner.close.pending", { count: m.pending })}</span>}
             </span>
             <span className="text-xs text-slate-500">
-              {m.status === "closed" && m.closed_at && t("owner.close.closedOn", {
+              {/* 9-nov (revisión externa): sin quién cerró (los meses sembrados del demo), no se escribe "por —". */}
+              {m.status === "closed" && m.closed_at && t(m.closed_by ? "owner.close.closedOn" : "owner.close.closedOnDate", {
                 date: new Date(m.closed_at).toLocaleDateString(lang, { day: "numeric", month: "short" }),
-                who: m.closed_by ?? "—",
+                who: m.closed_by,
               })}
               {m.status === "current" && t("owner.close.current")}
               {m.status === "waiting" && t("owner.close.waiting", {

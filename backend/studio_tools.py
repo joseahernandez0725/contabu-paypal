@@ -19,7 +19,7 @@ from sqlalchemy import case, func
 from sqlmodel import Session, select
 
 import month_close
-from invoices import OPEN, PAID_ANY
+from invoices import OPEN, PAID_ANY, paid_so_far_subquery
 from models import Company, Contractor, ContractorPayment, Invoice, InvoiceCustomer
 
 _MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November",
@@ -36,17 +36,23 @@ def _month_label(ym: str) -> str:
 
 def customer_totals(session: Session, company: Company) -> dict:
     today = date.today()
-    collected = func.coalesce(func.sum(case((Invoice.status.in_(PAID_ANY), Invoice.amount), else_=0)), 0)
-    outstanding = func.coalesce(func.sum(case((Invoice.status.in_(OPEN) & (Invoice.due_date >= today), Invoice.amount), else_=0)), 0)
-    overdue = func.coalesce(func.sum(case((Invoice.status.in_(OPEN) & (Invoice.due_date < today), Invoice.amount), else_=0)), 0)
+    # 9-nov (deuda #45): una factura abierta con pagos parciales debe solo lo que falta; lo cobrado cuenta como cobrado.
+    sofar = paid_so_far_subquery(company.id)
+    part = func.coalesce(sofar.c.paid, 0)
+    collected = func.coalesce(func.sum(case((Invoice.status.in_(PAID_ANY), Invoice.amount),
+                                            (Invoice.status.in_(OPEN), part), else_=0)), 0)
+    outstanding = func.coalesce(func.sum(case((Invoice.status.in_(OPEN) & (Invoice.due_date >= today), Invoice.amount - part), else_=0)), 0)
+    overdue = func.coalesce(func.sum(case((Invoice.status.in_(OPEN) & (Invoice.due_date < today), Invoice.amount - part), else_=0)), 0)
     rows = session.exec(
         select(func.coalesce(InvoiceCustomer.name, "—"), func.count(Invoice.id), collected, outstanding, overdue)
         .select_from(Invoice).join(InvoiceCustomer, InvoiceCustomer.id == Invoice.customer_id, isouter=True)
+        .join(sofar, sofar.c.invoice_id == Invoice.id, isouter=True)
         .where(Invoice.company_id == company.id).where(Invoice.status != "DRAFT")
         .group_by(InvoiceCustomer.name).order_by(collected.desc())
     ).all()
     tot = session.exec(
         select(collected, outstanding, overdue).select_from(Invoice)
+        .join(sofar, sofar.c.invoice_id == Invoice.id, isouter=True)
         .where(Invoice.company_id == company.id).where(Invoice.status != "DRAFT")
     ).one()
     return {

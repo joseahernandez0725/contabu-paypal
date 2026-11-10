@@ -113,7 +113,8 @@ export default function Login() {
               <span className="text-brand-amber">Conta</span>
               <span className="text-brand-green">Bu</span>
             </div>
-            <p className="text-sm text-slate-500">{t("login.subtitle")}</p>
+            {/* 9-nov (revisión externa): en el sitio del concurso, la primera pantalla nombra a PayPal. */}
+            <p className="text-sm text-slate-500">{t(PAYPAL_DEMO ? "login.subtitlePaypal" : "login.subtitle")}</p>
           </div>
 
           {DEMO_MODE && (

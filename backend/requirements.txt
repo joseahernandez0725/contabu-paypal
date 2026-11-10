@@ -47,4 +47,3 @@ uvloop==0.22.1; sys_platform != "win32"
 watchfiles==1.2.0
 websockets==16.0
 openpyxl==3.1.5
-stripe==15.3.0

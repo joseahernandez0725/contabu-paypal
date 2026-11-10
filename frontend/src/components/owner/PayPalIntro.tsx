@@ -11,9 +11,13 @@ export default function PayPalIntro({ onStart, onSkip }: { onStart: () => void; 
 
   return (
     <div className="fixed inset-0 z-[70] bg-slate-900/60 overflow-y-auto" role="dialog" aria-modal="true" aria-label={t("owner.intro.title")}>
-      <div className="min-h-full flex items-center justify-center p-4">
-        <div className="w-full max-w-3xl rounded-3xl bg-white shadow-2xl p-5 sm:p-7 space-y-5">
-          <div className="space-y-2 text-center">
+      <div className="min-h-full flex items-center justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="relative w-full max-w-3xl rounded-3xl bg-white shadow-2xl p-5 sm:p-7 space-y-5">
+          {/* 9-nov (revisión externa): en el celular "Saltar" quedaba cortado abajo; ahí va arriba, siempre a la vista. */}
+          <button type="button" onClick={onSkip} className="sm:hidden absolute top-3 right-4 px-2 py-1 text-sm text-slate-500 hover:text-slate-800">
+            {t("owner.guide.skip")}
+          </button>
+          <div className="space-y-2 text-center pt-6 sm:pt-0">
             <div className="inline-block text-[11px] font-semibold tracking-wide uppercase text-[#003087] bg-[#FFC439]/40 rounded-full px-3 py-1">
               {t("owner.intro.kicker")}
             </div>
@@ -27,7 +31,7 @@ export default function PayPalIntro({ onStart, onSkip }: { onStart: () => void; 
           <p className="text-xs text-center text-slate-500">{t("owner.intro.sandbox")}</p>
 
           <div className="flex flex-col-reverse sm:flex-row items-center justify-center gap-2">
-            <button type="button" onClick={onSkip} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-800">
+            <button type="button" onClick={onSkip} className="hidden sm:inline-block px-4 py-2 text-sm text-slate-500 hover:text-slate-800">
               {t("owner.guide.skip")}
             </button>
             {inTour() && (

@@ -273,26 +273,40 @@ def main() -> int:
                            amount=Decimal("80.00"), due_date=_d(2099, 1, 1), status="SENT")
             s.add(inv2); s.commit(); s.refresh(inv2); inv2_id = inv2.id
         genuine = {"ok": False}
+        sent_to_verify = {}
         def hook_api(method, path, **kw):
             if path.endswith("verify-webhook-signature"):
+                sent_to_verify["body"] = kw.get("content")
                 return {"verification_status": "SUCCESS" if genuine["ok"] else "FAILURE"}
             return {"id": "INV2-HOOK", "status": hook_state["status"], "payments": {"transactions": hook_state["payments"]}}
-        hook_state = {"status": "PARTIALLY_PAID", "payments": [{"type": "PAYPAL", "payment_id": "HOOKPAY", "payment_date": "2026-06-26",
-                                                                "amount": {"currency_code": "USD", "value": "80.00"}}]}
+        def pay(pid, value):
+            return {"type": "PAYPAL", "payment_id": pid, "payment_date": "2026-06-26", "amount": {"currency_code": "USD", "value": value}}
+        hook_state = {"status": "PARTIALLY_PAID", "payments": [pay("HOOKPAY", "30.00")]}
         paypal.api = hook_api
-        event = {"event_type": "INVOICING.INVOICE.PAID", "resource": {"invoice": {"id": "INV2-HOOK"}}}
+        # 9-nov (revisión externa): el aviso llega con acentos y en el formato de PayPal; la firma cubre esos BYTES.
+        raw = ('{"id":"WH-EVT-1","event_type":"INVOICING.INVOICE.PAID","summary":"Pago de José Peña",'
+               '"resource":{"invoice":{"id":"INV2-HOOK","primary_recipients":[{"billing_info":{"name":{"given_name":"José"}}}]}}}').encode()
         hook = f"/api/paypal/webhook/{conn_id}"
+        post_hook = lambda: client.post(hook, content=raw, headers={"Content-Type": "application/json"})
         def hook_rows():
             with Session(engine) as s:
-                return s.get(Invoice, inv2_id).status, s.exec(select(func.count(PayPalEntry.id)).where(PayPalEntry.paypal_id == "HOOKPAY")).one()
-        r = client.post(hook, json=event)
+                return s.get(Invoice, inv2_id).status, s.exec(select(func.count(PayPalEntry.id)).where(PayPalEntry.paypal_id.in_(["HOOKPAY", "HOOKPAY2"]))).one()
+        outstanding = lambda: client.get(f"{base}/invoices", headers=cl).json()["summary"]["outstanding"]
+        r = post_hook()
         expect("un aviso SIN firma válida → 400 y no cambia nada", r.status_code == 400 and hook_rows() == ("SENT", 0), (r.status_code, hook_rows()))
+        expect("la verificación recibe el aviso con sus BYTES originales (acentos sin re-escribir)",
+               raw in (sent_to_verify.get("body") or b"") and b'"webhook_id": "WH-1"' in sent_to_verify["body"],
+               (sent_to_verify.get("body") or b"")[:120])
         genuine["ok"] = True
-        r = client.post(hook, json=event)
-        expect("el evento dice PAID pero la factura está parcial → no se asienta", r.status_code == 200 and hook_rows() == ("PARTIALLY_PAID", 0), hook_rows())
-        hook_state["status"] = "PAID"
-        client.post(hook, json=event); client.post(hook, json=event)
-        expect("pagada: entra SOLA, y el aviso repetido no duplica", hook_rows() == ("PAID", 1), hook_rows())
+        r = post_hook()
+        expect("pago parcial de 30 sobre 80 → entra al libro por 30 y por cobrar baja a 50",
+               r.status_code == 200 and hook_rows() == ("PARTIALLY_PAID", 1) and outstanding() == "50.00", (hook_rows(), outstanding()))
+        hook_state.update(status="PAID", payments=[pay("HOOKPAY", "30.00"), pay("HOOKPAY2", "50.00")])
+        post_hook(); post_hook()
+        expect("pagada del todo: entra el segundo pago, el aviso repetido no duplica y por cobrar queda en 0",
+               hook_rows() == ("PAID", 2) and outstanding() == "0", (hook_rows(), outstanding()))
+        r = client.post(hook, content=b"not json", headers={"Content-Type": "application/json"})
+        expect("un cuerpo que no es JSON → 400", r.status_code == 400, r.status_code)
 
         # ── Las credenciales propias (Jose, 2-nov): el juez usa SU app de sandbox ──
         url_keys = f"/api/companies/{other_id}/paypal/credentials"

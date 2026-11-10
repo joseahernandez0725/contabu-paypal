@@ -21,7 +21,8 @@ import OwnerChat from "./OwnerChat";
 const LICENSE = (import.meta.env.VITE_AG_STUDIO_LICENSE as string | undefined) || undefined;
 
 // PayPal: azul de marca y el amarillo del botón; el resto, la tipografía de ContaBu.
-const PALETTE = ["#0070BA", "#94A3B8", "#009CDE", "#FFC439", "#2E7D32", "#7B61FF", "#E0699B", "#003087", "#00A3A3", "#F28C28"];
+// 9-nov (revisión externa): el tercer color es el de "Vencido" en "Facturas por cliente": rojo, como en todo el portal.
+const PALETTE = ["#0070BA", "#94A3B8", "#E11D48", "#FFC439", "#2E7D32", "#7B61FF", "#E0699B", "#003087", "#00A3A3", "#F28C28"];
 const theme = studioTheme.withParams({
   accentColor: "#0070BA",
   fontFamily: "inherit",
@@ -162,9 +163,10 @@ export default function OwnerDashboard({ home }: { home: OwnerHome }) {
         status_label: t(`owner.dashboard.status.${status}`, { defaultValue: status }),
         due_label: i.due_date ? monthLabelOf(i.due_date.slice(0, 7)) : "—",
         amount,
-        collected: status === "Paid" ? amount : 0,
-        open: status === "Open" ? amount : 0,
-        overdue: status === "Overdue" ? amount : 0,
+        // 9-nov (deuda #45): una abierta con pagos parciales debe solo lo que falta; lo pagado ya cuenta como cobrado.
+        collected: status === "Paid" ? amount : num(i.paid_so_far ?? "0"),
+        open: status === "Open" ? amount - num(i.paid_so_far ?? "0") : 0,
+        overdue: status === "Overdue" ? amount - num(i.paid_so_far ?? "0") : 0,
         // Días de atraso (8-nov): los calcula el código, para "Quién me debe".
         // Igual que `reminder_candidates` (fecha de hoy contra la de vencimiento, sin horas): las dos cifras coinciden.
         days_overdue: status === "Overdue" ? Math.max(0, Math.round((Date.parse(new Date().toISOString().slice(0, 10)) - Date.parse(i.due_date)) / 86_400_000)) : 0,
