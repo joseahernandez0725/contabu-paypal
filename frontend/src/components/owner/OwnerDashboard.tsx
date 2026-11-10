@@ -23,12 +23,24 @@ const LICENSE = (import.meta.env.VITE_AG_STUDIO_LICENSE as string | undefined) |
 // PayPal: azul de marca y el amarillo del botón; el resto, la tipografía de ContaBu.
 // 9-nov (revisión externa): el tercer color es el de "Vencido" en "Facturas por cliente": rojo, como en todo el portal.
 const PALETTE = ["#0070BA", "#94A3B8", "#E11D48", "#FFC439", "#2E7D32", "#7B61FF", "#E0699B", "#003087", "#00A3A3", "#F28C28"];
+// Opción de Jose (9-nov): un marco verde de ContaBu (#15803d) con 70 % de transparencia, para distinguir el tablero.
+const STUDIO_FRAME: string | false = false;
 const theme = studioTheme.withParams({
   accentColor: "#0070BA",
   fontFamily: "inherit",
   browserColorScheme: "light",
   // 8-nov (rediseño): que se vea como el portal: fondo slate-50, tarjetas blancas redondeadas, títulos pequeños.
-  backgroundColor: "#F8FAFC",
+  backgroundColor: "#FFFFFF",   // 9-nov: las tarjetas, blancas como las del portal (el fondo slate-50 es el de la página)
+  // 9-nov (revisión externa: "el tablero se ve ajeno, con marco gris"): sin el marco de AG Studio (#E8EBED con borde) ni su
+  // lienzo gris (#EFF1F3); las tarjetas quedan directo sobre el fondo del portal.
+  // 🔄 9-nov (Jose): el fondo del tablero, del mismo blanco de las tarjetas, para que no se vea como un fondo aparte.
+  studioWrapperBackgroundColor: "#FFFFFF",
+  studioWrapperBorder: STUDIO_FRAME,
+  studioWrapperBorderRadius: 12,
+  studioWrapperSpacing: 0,
+  studioCanvasBackgroundColor: "#FFFFFF",
+  studioCanvasBorder: false,
+  studioCanvasShadow: false,
   studioWidgetTitleFontSize: 15,
   studioWidgetTitleFontWeight: 600,
   studioWidgetTitleTextColor: "#0F172A",
