@@ -23,3 +23,6 @@ Chase*
 **/*.[pP][dD][fF]
 **/*.[oO][fF][xX]
 **/*.[qQ][fF][xX]
+# Archivos comprimidos (10-nov-2026): `private.7z`, con el que `private/` viaja entre los dos equipos, se habría copiado.
+**/*.7[zZ]
+**/*.[zZ][iI][pP]

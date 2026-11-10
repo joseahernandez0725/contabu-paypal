@@ -53,6 +53,10 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
   const [view, setView] = useState<OwnerView>(initialView);
   const [remindFor, setRemindFor] = useState<{ id: number; n: number } | null>(null);
   const [askNonce, setAskNonce] = useState(0);   // 10-nov: abrir el asistente desde cualquier pantalla
+  // 10-nov (Jose): el asistente atiende en la pantalla donde esté el dueño y conserva la conversación al cambiar de pantalla.
+  // Corre sobre el tablero de AG Studio, así que, una vez abierto (el asistente o Análisis), el tablero se queda montado
+  // (oculto fuera de Análisis). Solo donde hay asistente: ni en la visita ni en la vista previa.
+  const [keepDash, setKeepDash] = useState(false);
   // Contratistas solo con PAYPAL_PAYOUTS encendido en el backend (4-nov): si no, la pestaña no aparece.
   const [payouts, setPayouts] = useState(false);
   useEffect(() => { getContractors().then((x) => setPayouts(x.enabled)).catch(() => setPayouts(false)); }, []);
@@ -72,9 +76,13 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    setHome(null); setError(false);
+    setHome(null); setError(false); setKeepDash(false);
     getOwnerHome().then(setHome).catch(() => setError(true));
   }, [company.id, notice?.text]);   // al volver de PayPal (aviso nuevo) se vuelve a pedir: la tarjeta de conectar se va
+
+  const canAsk = PAYPAL_DEMO && !!home && !home.preview && !inTour();
+  useEffect(() => { if (view === "dashboard" && canAsk) setKeepDash(true); }, [view, canAsk]);
+  const showDash = !!home && !error && (view === "dashboard" || (canAsk && keepDash));
 
   const managedBy = home?.managed_by ?? null;
 
@@ -133,12 +141,7 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
               <Summary home={home} />
             </>
           ) : view === "dashboard" ? (
-            <>
-              <InvoicesTabs view={view} onSelect={setView} />
-              <Suspense fallback={<div className="flex justify-center py-16"><span className="loading loading-spinner loading-lg text-brand-green" /></div>}>
-                <OwnerDashboard home={home} openAsk={askNonce} />
-              </Suspense>
-            </>
+            <InvoicesTabs view={view} onSelect={setView} />
           ) : view === "accounts" ? (
             <OwnerAccounts preview={home.preview} managedBy={home.managed_by} />
           ) : view === "contractors" ? (
@@ -151,26 +154,34 @@ export default function OwnerApp({ company, companies, onSwitch, onExitPreview, 
               <OwnerInvoices preview={home.preview} businessName={home.company.name} autoOpen={newInvoice} remindFor={remindFor} />
             </>
           )}
+          {/* El tablero de Cobros › Análisis y, con él, el asistente (su botón, el chat y "Lo que hizo la IA"). */}
+          {showDash && home && (
+            <Suspense fallback={view === "dashboard"
+              ? <div className="flex justify-center py-16"><span className="loading loading-spinner loading-lg text-brand-green" /></div>
+              : <AskFab busy />}>
+              <OwnerDashboard home={home} openAsk={askNonce} visible={view === "dashboard"} />
+            </Suspense>
+          )}
         </main>
       </div>
-      {/* 10-nov (Jose: el asistente quedó escondido): el mismo botón en todas las pantallas. El asistente corre sobre el Agent
-          Framework de AG Studio, que necesita el tablero: tocarlo lleva a Cobros › Análisis con el chat abierto. En
-          Análisis el botón lo pone el propio tablero; en la visita y en la vista previa no hay IA. */}
-      {PAYPAL_DEMO && home && !home.preview && !inTour() && view !== "dashboard" && (
-        <AskFab onClick={() => { setAskNonce(Date.now()); setView("dashboard"); }} />
-      )}
+      {/* 10-nov (Jose: el asistente quedó escondido): el mismo botón en todas las pantallas. La primera vez monta el tablero
+          (oculto) y abre el chat ahí mismo, sin cambiar de pantalla; después el botón lo pone el propio tablero. */}
+      {canAsk && !showDash && <AskFab onClick={() => { setAskNonce(Date.now()); setKeepDash(true); }} />}
     </div>
   );
 }
 
-function AskFab({ onClick }: { onClick: () => void }) {
+/** `busy`: mientras se descarga AG Studio (la primera vez que se abre el asistente). */
+function AskFab({ onClick, busy = false }: { onClick?: () => void; busy?: boolean }) {
   const { t } = useTranslation();
   return (
-    <button onClick={onClick} aria-label={t("owner.dashboard.ai.open")} title={t("owner.dashboard.ai.open")}
+    <button onClick={onClick} disabled={busy} aria-busy={busy} aria-label={t("owner.dashboard.ai.open")} title={t("owner.dashboard.ai.open")}
             className="fixed bottom-5 right-5 z-[61] flex h-14 items-center gap-2 rounded-full px-5 shadow-lg transition-all bg-[#FFC439] text-[#003087] hover:bg-[#f2ba36]">
-      <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /><path d="M8.5 11h.01M12 11h.01M15.5 11h.01" />
-      </svg>
+      {busy ? <span className="loading loading-spinner loading-sm" /> : (
+        <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /><path d="M8.5 11h.01M12 11h.01M15.5 11h.01" />
+        </svg>
+      )}
       <span className="hidden sm:inline text-sm font-semibold">{t("owner.dashboard.ai.fab")}</span>
     </button>
   );

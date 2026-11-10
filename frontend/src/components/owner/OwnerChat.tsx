@@ -7,10 +7,8 @@ import type { AgAiChatMessage, AgAiChatSession, AgAiHarness, AgAiRunStatus } fro
 // widgets un instante. Este chat habla con el MISMO harness del Agent Framework (`createAiHarness`, nuestro adaptador y
 // nuestras herramientas), pero lo dibuja ContaBu: el tablero se queda siempre en modo vista y no se mueve.
 
-export interface ChatStarter { label: string; prompt: string }
-
-export default function OwnerChat({ open, harness, starters, toolName, onClose }: {
-  open: boolean; harness: AgAiHarness | null; starters: ChatStarter[]; toolName: (n: string) => string; onClose: () => void;
+export default function OwnerChat({ open, harness, toolName, onClose }: {
+  open: boolean; harness: AgAiHarness | null; toolName: (n: string) => string; onClose: () => void;
 }) {
   const { t } = useTranslation();
   const [session, setSession] = useState<AgAiChatSession | null>(null);
@@ -61,18 +59,9 @@ export default function OwnerChat({ open, harness, starters, toolName, onClose }
       </div>
 
       <div className="flex-1 space-y-3 overflow-auto px-3 py-3 text-sm">
+        {/* 10-nov (Jose): sin preguntas de inicio (eran 14); el saludo ya dice de qué se le puede preguntar. */}
         {messages.length === 0 && (
-          <>
-            <div className="whitespace-pre-line rounded-xl bg-slate-100 px-3.5 py-3 leading-relaxed text-slate-700">{t("owner.dashboard.ai.welcome")}</div>
-            <div className="flex flex-wrap gap-1.5">
-              {starters.map((s) => (
-                <button key={s.label} onClick={() => void send(s.prompt)} disabled={!harness}
-                        className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 hover:border-[#0070BA] hover:text-[#0070BA]">
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </>
+          <div className="whitespace-pre-line rounded-xl bg-slate-100 px-3.5 py-3 leading-relaxed text-slate-700">{t("owner.dashboard.ai.welcome")}</div>
         )}
         {messages.map((m) => (
           <div key={m.id} className={m.role === "user" ? "flex justify-end" : ""}>

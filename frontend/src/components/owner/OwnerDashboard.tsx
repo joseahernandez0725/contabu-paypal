@@ -126,7 +126,10 @@ const STUDIO_CSS = `
 }
 `;
 
-export default function OwnerDashboard({ home, openAsk = 0 }: { home: OwnerHome; openAsk?: number }) {
+/** `visible` (10-nov, Jose): el asistente atiende en la pantalla donde esté el dueño y conserva la conversación al cambiar
+ *  de pantalla. Corre sobre el Agent Framework de AG Studio, que necesita el tablero: fuera de Cobros › Análisis el tablero
+ *  sigue montado pero oculto, y solo se ven el botón, el chat y "Lo que hizo la IA". */
+export default function OwnerDashboard({ home, openAsk = 0, visible = true }: { home: OwnerHome; openAsk?: number; visible?: boolean }) {
   const { t, i18n } = useTranslation();
   const es = (i18n.language || "en").startsWith("es");
   const [invoices, setInvoices] = useState<OwnerInvoice[] | null>(null);
@@ -139,7 +142,7 @@ export default function OwnerDashboard({ home, openAsk = 0 }: { home: OwnerHome;
   const showFab = canAsk || inTour();
   const [tourNote, setTourNote] = useState(false);
   const [asking, setAsking] = useState(false);
-  // 10-nov: el botón del asistente vive en todo el portal (OwnerApp); desde otra pantalla llega aquí con el chat abierto.
+  // 10-nov: el botón del asistente vive en todo el portal (OwnerApp); la primera vez monta este tablero con el chat abierto.
   useEffect(() => { if (openAsk) setAsking(true); }, [openAsk]);
   // Por cada respuesta (8-nov): se acumulan sus turnos hasta el final y se muestra el resumen, con la revisión de cifras.
   type Answer = { turns: number; ms: number; tokens: number; usd: number; model: string; verified: boolean | null; steps: StudioStep[] };
@@ -159,15 +162,12 @@ export default function OwnerDashboard({ home, openAsk = 0 }: { home: OwnerHome;
   const toolName = (n: string) => (t(`owner.dashboard.ai.tool.${n === "customer_totals" ? "customerTotals" : n === "contractor_totals" ? "contractorTotals"
     : n === "month_totals" ? "monthTotals" : n === "category_totals" ? "categoryTotals" : n === "reminder_candidates" ? "reminderCandidates"
     : n === "open_collections" ? "openCollections" : `studio.${n}`}`, { name: n, defaultValue: n }));
-  // 10-nov (Jose): preguntas de inicio sobre todas sus finanzas (ingresos, gastos, cobros, contratistas), no solo cobros.
-  const starters = useMemo(() => [1, 2, 14, 3, 4, 9, 10, 11, 5, 12, 6, 7, 8, 13].map((i) =>
-    ({ label: t(`owner.dashboard.ai.s${i}`), prompt: t(`owner.dashboard.ai.p${i}`) })), [t]);
   const [harness, setHarness] = useState<AgAiHarness | null>(null);
   // AG Studio solo arma el harness cuando abre su propio panel (modo edición). El tablero se queda en modo vista, así que
   // lo armamos nosotros con la misma función en cuanto su API está lista (`onApiReady`).
   // Las categorías del negocio, para que en español el asistente las nombre como la pantalla (10-nov).
   setAssistantCategories([...new Set(home.closed_months.flatMap((m) => [...m.in, ...m.out].map((c) => c.category)))]);
-  const ai = useMemo(() => collectionsAssistant(es ? "es" : "en", onTurn, starters), [es, onTurn, starters]);
+  const ai = useMemo(() => collectionsAssistant(es ? "es" : "en", onTurn), [es, onTurn]);
 
   useEffect(() => {
     getInvoices().then((v) => setInvoices(v.invoices)).catch(() => setError(true));
@@ -379,11 +379,31 @@ export default function OwnerDashboard({ home, openAsk = 0 }: { home: OwnerHome;
   const localeText = useMemo(() => ({ ...(es ? AG_STUDIO_LOCALE_ES_ES : {}), aggregationSumFieldName: "${name}",
                                        aggregationMaxFieldName: "${name}" }), [es]);
 
-  if (error) return <p className="text-sm text-rose-600">{t("owner.error")}</p>;
-  if (!data) return <div className="flex justify-center py-16"><span className="loading loading-spinner loading-lg text-brand-green" /></div>;
   return (
-    <div className="space-y-2">
-      <p className="text-sm text-slate-600">{t("owner.dashboard.intro")}</p>
+    <>
+      <style>{STUDIO_CSS}</style>
+      <div hidden={!visible} className={visible ? "space-y-2" : "hidden"}>
+        {error ? <p className="text-sm text-rose-600">{t("owner.error")}</p>
+          : !data ? <div className="flex justify-center py-16"><span className="loading loading-spinner loading-lg text-brand-green" /></div>
+          : (
+            <>
+              <p className="text-sm text-slate-600">{t("owner.dashboard.intro")}</p>
+              {/* `key`: AG Studio fija el idioma al crearse; al cambiarlo se vuelve a crear. El chat de AG Studio solo existe en
+                  el modo de edición: con el asistente abierto se pasa a ese modo, pero solo con el panel del chat. */}
+              <div className="contabu-studio overflow-hidden" style={{ height: NARROW ? MOBILE_TRACKS * 22 + 60 + LIST_TRACKS * 22 : TRACKS * 22 + 50, minHeight: 420 }}>
+                <AgStudioProvider licenseKey={LICENSE} modules={[AgStudioAiModule]}>
+                  <AgStudio key={es ? "es" : "en"} data={data as never} initialState={initialState} mode="view" theme={theme} widgets={widgets}
+                            onApiReady={canAsk ? (e: { api: unknown }) => setHarness((ai as (p: { api: unknown }) => AgAiHarness)({ api: e.api })) : undefined}
+                            localeText={localeText} ai={canAsk ? ai : undefined} aiText={STUDIO_AI_TEXT} aiToolDisplay={tools}
+                            responsiveLayoutBreakpoints={RESPONSIVE}
+                            panels={{ view: { left: [], right: [] } }}
+                            style={{ height: "100%", width: "100%" }} />
+                </AgStudioProvider>
+              </div>
+              <p className="text-[11px] text-slate-400">{t("owner.dashboard.note")}</p>
+            </>
+          )}
+      </div>
       {/* 8-nov (revisión como cliente): antes quedaba al fondo de la página, lejos del chat; ahora arriba, sobre el chat. */}
       {asking && last && (
         <div className="contabu-trace">
@@ -401,29 +421,14 @@ export default function OwnerDashboard({ home, openAsk = 0 }: { home: OwnerHome;
                                        : { label: t("owner.dashboard.ai.step.checkNone") })} />
         </div>
       )}
-
-      {/* `key`: AG Studio fija el idioma al crearse; al cambiarlo se vuelve a crear. El chat de AG Studio solo existe en
-          el modo de edición: con el asistente abierto se pasa a ese modo, pero solo con el panel del chat. */}
-      <style>{STUDIO_CSS}</style>
-      <div className="contabu-studio overflow-hidden" style={{ height: NARROW ? MOBILE_TRACKS * 22 + 60 + LIST_TRACKS * 22 : TRACKS * 22 + 50, minHeight: 420 }}>
-        <AgStudioProvider licenseKey={LICENSE} modules={[AgStudioAiModule]}>
-          <AgStudio key={es ? "es" : "en"} data={data as never} initialState={initialState} mode="view" theme={theme} widgets={widgets}
-                    onApiReady={canAsk ? (e: { api: unknown }) => setHarness((ai as (p: { api: unknown }) => AgAiHarness)({ api: e.api })) : undefined}
-                    localeText={localeText} ai={canAsk ? ai : undefined} aiText={STUDIO_AI_TEXT} aiToolDisplay={tools}
-                    responsiveLayoutBreakpoints={RESPONSIVE}
-                    panels={{ view: { left: [], right: [] } }}
-                    style={{ height: "100%", width: "100%" }} />
-        </AgStudioProvider>
-      </div>
-      <p className="text-[11px] text-slate-400">{t("owner.dashboard.note")}</p>
       {/* Se oculta al cerrarlo, no se desmonta: la conversación sigue ahí al volver a abrirlo. */}
-      {canAsk && <OwnerChat open={asking} harness={harness} starters={starters} toolName={toolName} onClose={() => setAsking(false)} />}
-      {showFab && !canAsk && tourNote && (
+      {canAsk && <OwnerChat open={asking} harness={harness} toolName={toolName} onClose={() => setAsking(false)} />}
+      {showFab && !canAsk && visible && tourNote && (
         <div role="status" className="fixed bottom-24 right-5 z-[61] max-w-xs rounded-xl bg-white p-3 text-sm text-slate-700 shadow-lg ring-1 ring-slate-900/10">
           {t("owner.dashboard.ai.tourOnly")}
         </div>
       )}
-      {showFab && (
+      {showFab && (canAsk || visible) && (
         <button data-tour="pp-assistant" onClick={() => (canAsk ? setAsking((a) => !a) : setTourNote((x) => !x))} aria-expanded={asking}
                 aria-label={asking ? t("owner.dashboard.ai.close") : t("owner.dashboard.ai.open")}
                 title={asking ? t("owner.dashboard.ai.close") : t("owner.dashboard.ai.open")}
@@ -441,6 +446,6 @@ export default function OwnerDashboard({ home, openAsk = 0 }: { home: OwnerHome;
           )}
         </button>
       )}
-    </div>
+    </>
   );
 }

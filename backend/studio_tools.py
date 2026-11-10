@@ -35,6 +35,20 @@ def _month_label(ym: str) -> str:
     return f"{_MONTHS[int(ym[5:7]) - 1]} {ym[:4]}"
 
 
+# 10-nov: el hábito de pago va en PALABRAS. Con el código (`on_time`) el modelo lo copiaba en la respuesta aunque las
+# instrucciones lo prohibieran (✅ probado con el modelo real, EN y ES); lo que no ve, no lo puede escribir.
+# on_time = nunca tarde · sometimes_late = hasta la mitad tarde · often_late = más de la mitad tarde
+_HABIT = {"on_time": "always paid on time", "sometimes_late": "sometimes paid after the due date",
+          "often_late": "usually pays after the due date"}
+
+
+def _owed(not_due, overdue) -> dict:
+    """Lo que deben, con su total (10-nov): sin el total, el modelo sumaba lo vencido y lo que aún no vence (la revisión de
+    cifras ocultaba la respuesta), y con el nombre `outstanding` lo presentaba como si incluyera lo vencido."""
+    return {"not_yet_due_usd": _usd(not_due), "overdue_usd": _usd(overdue),
+            "owed_total_usd": _usd(Decimal(not_due or 0) + Decimal(overdue or 0))}
+
+
 def customer_totals(session: Session, company: Company) -> dict:
     today = date.today()
     # 9-nov (deuda #45): una factura abierta con pagos parciales debe solo lo que falta; lo cobrado cuenta como cobrado.
@@ -59,16 +73,16 @@ def customer_totals(session: Session, company: Company) -> dict:
     import invoices as inv_mod   # aquí: el historial de pago (SQL) que ya decide el tono de los recordatorios
     names = {c.id: c.name for c in session.exec(select(InvoiceCustomer).where(InvoiceCustomer.company_id == company.id)).all()}
     habits = sorted(({"customer": names.get(cid, "—"), "paid_invoices": h["paid"], "paid_after_due_date": h["late"],
-                      "habit": h["kind"]} for cid, h in inv_mod.payer_history(session, company.id).items()),
+                      "habit": _HABIT.get(h["kind"], h["kind"])} for cid, h in inv_mod.payer_history(session, company.id).items()),
                     key=lambda h: (-h["paid_after_due_date"], h["customer"]))
     return {
-        # on_time = nunca tarde · sometimes_late = hasta la mitad tarde · often_late = más de la mitad tarde
         "payment_habits_latest_payers_first": habits,
         "customers_ordered_by_collected": [
             {"rank_by_collected": i + 1, "customer": r[0], "invoices": int(r[1]), "collected_usd": _usd(r[2]),
-             "outstanding_usd": _usd(r[3]), "overdue_usd": _usd(r[4])} for i, r in enumerate(rows)],
-        "all_customers_total": {"collected_usd": _usd(tot[0]), "outstanding_usd": _usd(tot[1]), "overdue_usd": _usd(tot[2])},
-        "source": "SQL over the business's invoices (paid, outstanding = sent and not yet due, overdue = sent and past due)",
+             **_owed(r[3], r[4])} for i, r in enumerate(rows)],
+        "all_customers_total": {"collected_usd": _usd(tot[0]), **_owed(tot[1], tot[2])},
+        "source": "SQL over the business's invoices (collected = paid; not yet due = sent and still within its due date; "
+                  "overdue = sent and past due; owed total = not yet due + overdue)",
     }
 
 
@@ -192,6 +206,47 @@ def category_totals(session: Session, company: Company) -> dict:
     }
 
 
+_MERCHANTS_PER_CATEGORY = 8
+
+
+def _by_category(rows: list[tuple[str, str, Decimal, int]]) -> list[dict]:
+    """Comercios agrupados por categoría, con el total de la categoría. 10-nov (Jose: "¿cuánto en gasolina el último mes?"):
+    el mes traía solo sus 12 comercios mayores, sin agrupar; el que quedaba fuera lo "calculaba" el modelo restando (la
+    revisión de cifras ocultó la respuesta) o lo tomaba del año. Ahora cada categoría trae TODOS sus comercios; si pasan de
+    `_MERCHANTS_PER_CATEGORY`, el resto se declara con su suma (`other_merchants`): nada se omite en silencio."""
+    cats: dict[str, list] = defaultdict(list)
+    for cat, merchant, amt, n in rows:
+        cats[cat].append((merchant, amt, n))
+    out = []
+    for cat, ms in cats.items():
+        ms.sort(key=lambda x: x[1], reverse=True)
+        shown, rest = ms[:_MERCHANTS_PER_CATEGORY], ms[_MERCHANTS_PER_CATEGORY:]
+        entry = {"category": cat, "total": sum(a for _, a, _ in ms),
+                 "merchants_largest_first": [{"merchant": m, "costs_usd": _usd(a), "payments": n} for m, a, n in shown]}
+        if rest:
+            entry["other_merchants"] = {"merchants": len(rest), "costs_usd": _usd(sum(a for _, a, _ in rest)),
+                                        "payments": sum(n for _, _, n in rest)}
+        out.append(entry)
+    out.sort(key=lambda c: c["total"], reverse=True)
+    return [{"category": c["category"], "costs_usd": _usd(c.pop("total")), **{k: v for k, v in c.items() if k != "category"}}
+            for c in out]
+
+
+def _several(rows: list[tuple[str, str, Decimal, int]]) -> dict:
+    """Los comercios que están en MÁS de una categoría (Home Depot: materiales e insumos), con su total: sin él, el modelo
+    sumaba las dos partes y la revisión de cifras ocultaba la respuesta (10-nov, ✅ modelo real)."""
+    by: dict[str, list] = defaultdict(list)
+    for cat, merchant, amt, n in rows:
+        by[merchant].append((cat, amt, n))
+    out = sorted(((m, sum(a for _, a, _ in cs), cs) for m, cs in by.items() if len(cs) > 1), key=lambda r: r[1], reverse=True)
+    if not out:
+        return {}
+    return {"merchants_in_several_categories": [
+        {"merchant": m, "total_costs_usd": _usd(total), "payments": sum(n for _, _, n in cs),
+         "categories": [{"category": c, "costs_usd": _usd(a)} for c, a, _ in sorted(cs, key=lambda x: x[1], reverse=True)]}
+        for m, total, cs in out]}
+
+
 def merchant_totals(session: Session, company: Company) -> dict:
     """Cuánto se gastó en cada COMERCIO (la subcategoría: Home Depot, Shell…) en los meses cerrados, dentro de su categoría,
     en el año y por mes (10-nov, Jose: "¿cuánto he gastado en determinada tienda?"). Solo totales, nunca transacciones
@@ -217,24 +272,13 @@ def merchant_totals(session: Session, company: Company) -> dict:
         year.setdefault(k, [Decimal(0), 0])
         year[k][0] += amt
         year[k][1] += int(n)
-        months[mo].append((cat or "Other", merchant, amt))
-    by_cat: dict[str, list] = defaultdict(list)
-    for (cat, merchant), (amt, n) in year.items():
-        by_cat[cat].append({"merchant": merchant, "costs_usd": amt, "payments": n})
-    categories = sorted(({"category": c, "costs_usd": sum(x["costs_usd"] for x in ms),
-                          "merchants_largest_first": sorted(ms, key=lambda x: x["costs_usd"], reverse=True)}
-                         for c, ms in by_cat.items()), key=lambda c: c["costs_usd"], reverse=True)
-    for c in categories:
-        c["costs_usd"] = _usd(c["costs_usd"])
-        for x in c["merchants_largest_first"]:
-            x["costs_usd"] = _usd(x["costs_usd"])
+        months[mo].append((cat or "Other", merchant, amt, int(n)))
     top = sorted(((m, cat, a) for (cat, m), (a, _) in year.items()), key=lambda r: r[2], reverse=True)[:10]
+    year_rows = [(cat, m, a, n) for (cat, m), (a, n) in year.items()]
     return {
-        "merchants_by_category": categories,
+        "merchants_by_category": _by_category(year_rows), **_several(year_rows),
         "top_merchants": [{"rank": i + 1, "merchant": m, "category": c, "costs_usd": _usd(a)} for i, (m, c, a) in enumerate(top)],
-        "by_month": [{"month": _month_label(mo), "merchants_largest_first": [
-                         {"merchant": m, "category": c, "costs_usd": _usd(a)}
-                         for c, m, a in sorted(months[mo], key=lambda r: r[2], reverse=True)[:12]]}
+        "by_month": [{"month": _month_label(mo), "merchants_by_category": _by_category(months[mo]), **_several(months[mo])}
                      for mo in closed if mo in months],
         "note": "Merchant names are as they appear in the books. A merchant's category was set by a rule or by the bookkeeper.",
         "source": "SQL over the transactions of the months the bookkeeper closed (closed months cannot change)",
