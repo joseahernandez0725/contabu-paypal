@@ -2217,7 +2217,7 @@
     },
     "intro": {
       "kicker": "ContaBu + PayPal · sandbox",
-      "title": "Administra tu negocio desde PayPal.",
+      "title": "PayPal, de la factura a los libros.",
       "body": "Para este hackathon construimos el portal para el dueño de un pequeño negocio, administrado por su bookkeeper, con PayPal en el centro: facturas que el cliente paga con tarjeta y que el dueño puede dictar desde el celular, pagos a contratistas con PayPal Payouts, y cada venta registrada por el bruto con su comisión aparte, sin contar nada dos veces. Y, dentro de Cobros, un panel de análisis hecho con AG Studio, donde el dueño ve de un vistazo quién le debe y cuánto está vencido, y le pregunta a un asistente de IA a quién cobrarle primero. Lo hicimos con las APIs de PayPal y el PayPal Agent Toolkit, y con NVIDIA Nemotron y Qwen3: el código revisa cada cifra y el dueño confirma antes de que se envíe nada.",
       "sandbox": "Todo corre en el sandbox de PayPal. No se mueve dinero real.",
       "start": "Empezar la visita",

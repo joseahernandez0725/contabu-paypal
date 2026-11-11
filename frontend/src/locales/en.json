@@ -2087,7 +2087,7 @@
     },
     "intro": {
       "kicker": "ContaBu + PayPal · sandbox",
-      "title": "Run your business from PayPal.",
+      "title": "PayPal, from the invoice to the books.",
       "body": "For this hackathon we built a portal for small-business owners, managed by their bookkeeper, with PayPal at its center: invoices that customers pay by card and that the owner can dictate from a phone, contractor payments with PayPal Payouts, and every sale booked at gross with its fee apart, with nothing counted twice. And, inside Invoices, an Insights dashboard built with AG Studio, where the owner sees at a glance who owes them and what is overdue, and asks an AI assistant who to collect from first. We built it on PayPal's APIs and the PayPal Agent Toolkit, with NVIDIA Nemotron and Qwen3: the code checks every figure, and the owner confirms before anything is sent.",
       "sandbox": "Everything runs in PayPal's sandbox. No real money moves.",
       "start": "Start the tour",
