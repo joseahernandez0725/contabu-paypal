@@ -54,10 +54,10 @@ const STOPS: Stop[] = [
 
 // Una corrida REAL del dictado (6-nov, Nemotron 3 Nano: 5 dictados entre 0.6 y 1.3 s, mediana 0.9 s; 543–593 tokens;
 // $0.00004–0.00005). La visita no llama a la IA: muestra esta, con el mismo panel que ve el dueño en su libro.
-const SAMPLE_AI = { model: "open model", latency_ms: 945, tokens: 587, cost_usd: 0.000045 };
+const SAMPLE_AI = { model: "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", latency_ms: 945, tokens: 587, cost_usd: 0.000045 };
 // Una respuesta REAL del asistente del panel Análisis (8-nov, "¿A quién le recuerdo primero?"): 4.1 s, 25.304 tokens,
 // $0.00510; el modelo pidió la lista ordenada por el código (2.4 s), redactó (1.7 s) y el código revisó sus 2 cifras.
-const SAMPLE_INSIGHTS = { model: "open model", latency_ms: 4100, tokens: 25304, cost_usd: 0.0051 };
+const SAMPLE_INSIGHTS = { model: "Qwen/Qwen3-235B-A22B-Instruct-2507", latency_ms: 4100, tokens: 25304, cost_usd: 0.0051 };
 
 let introShownThisLoad = false;   // en la visita: la bienvenida sale una vez por carga (todos los jueces empiezan igual)
 

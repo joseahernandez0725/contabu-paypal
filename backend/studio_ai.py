@@ -1,16 +1,17 @@
 """
 EL ASISTENTE DEL TABLERO (FASE 16, rama `paypal-contest`, 6-nov): el puente entre el Agent Framework de AG Studio y
-Nemotron en Nebius Token Factory.
+el modelo en Nebius Token Factory (Qwen3 235B, `DEFAULT_MODEL`, elegido entre siete el 8-nov).
 
 AG Studio corre el agente en el NAVEGADOR (sus herramientas leen y filtran el tablero ahí) y le pide a un "adaptador" cada
 turno del modelo. El adaptador del portal manda aquí el turno (`AgLlmRequest`: la conversación, las instrucciones y las
-herramientas) y esta ruta lo traduce al formato de chat de Nebius, llama a Nemotron y devuelve la respuesta como la
+herramientas) y esta ruta lo traduce al formato de chat de Nebius, llama al modelo y devuelve la respuesta como la
 espera AG Studio (`AgLlmResponse`: texto y llamadas a herramientas). Así la llave de Nebius nunca llega al navegador.
 
 Lo que NO hace, a propósito (reglas de oro):
-- No ejecuta herramientas: las ejecuta AG Studio en el navegador, y todas son de LECTURA (ver el tablero, consultar sus
-  datos, filtrarlo) o abren Cobros. Ninguna envía, cobra ni cambia el libro; el recordatorio lo manda el dueño.
-- No calcula: las cifras salen de las consultas del motor de AG Studio sobre datos que ya calculó el código (SQL).
+- No ejecuta acciones: las herramientas de AG Studio corren en el navegador y las que devuelven cifras
+  (`studio_tools.py`) corren aquí en SQL; todas son de LECTURA (ver el tablero, consultar sus datos, filtrarlo) o abren
+  Cobros. Ninguna envía, cobra ni cambia el libro; el recordatorio lo manda el dueño.
+- No calcula: las cifras salen de SQL, y antes de devolver la respuesta el código busca cada monto en esos resultados.
 Cada turno se cuenta en `agentcall` (tope diario de la oficina) con su tiempo y su costo reales.
 """
 

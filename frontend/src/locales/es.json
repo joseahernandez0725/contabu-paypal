@@ -1029,7 +1029,7 @@
     },
     "reasonText": "¿Por qué? (opcional: el redactor aprende de esto)",
     "poweredBy": "Agentes sobre {{model}} · verificación web con Tavily",
-    "poweredByOpen": "Agentes de IA con modelos abiertos",
+    "poweredByOpen": "Agentes de IA sobre NVIDIA Nemotron",
     "costLine": "Este libro: {{cost}} · quedan {{left}} llamadas a los agentes hoy",
     "costTip": "Gastado en este libro: {{cost}} · llamadas a los agentes que quedan hoy: {{calls}} de {{cap}} · búsquedas web que quedan: {{searches}} de {{scap}}",
     "auditBtn": "Auditar",
@@ -2166,7 +2166,7 @@
       "ai": {
         "t": "Lo que hizo la IA",
         "b": "Un dictado real, como lo ve el dueño en su propio libro. La visita no llama a la IA: esta es una corrida medida.",
-        "s1": "Un modelo de IA abierto leyó el dictado, con el nombre del cliente oculto",
+        "s1": "NVIDIA Nemotron 3 Nano leyó el dictado, con el nombre del cliente oculto",
         "s1d": "\"Factúrale a [CUSTOMER] 875 dólares por la reparación del calentador, vence el próximo viernes, y envíala ya\"",
         "s2": "El código de ContaBu llenó con esos datos la herramienta create_invoice del PayPal Agent Toolkit, como borrador",
         "s2d": "$875.00 por \"reparación del calentador\" · al correo del cliente guardado",
@@ -2195,7 +2195,7 @@
       },
       "team": {
         "t": "El equipo de IA que revisa la contabilidad",
-        "b": "Un equipo de agentes de IA con modelos abiertos revisa la contabilidad, encuentra errores y propone reglas nuevas que el bookkeeper aprueba. Esta es la revisión guardada de este libro: lo que hizo cada agente. Una revisión completa de un libro real, de 10 meses y 197 transacciones, tarda unos 30 segundos y cuesta menos de un centavo."
+        "b": "Un equipo de agentes de IA sobre NVIDIA Nemotron revisa la contabilidad, encuentra errores y propone reglas nuevas que el bookkeeper aprueba. Esta es la revisión guardada de este libro: lo que hizo cada agente. Una revisión completa de un libro real, de 10 meses y 197 transacciones, tarda unos 30 segundos y cuesta menos de un centavo."
       },
       "live": {
         "t": "Eso es todo",
@@ -2208,7 +2208,7 @@
       "insightsAi": {
         "t": "Lo que hizo el asistente",
         "b": "Este botón abre un asistente construido sobre el Agent Framework de AG Studio. Esta es una respuesta real y medida; la visita no llama a la IA.",
-        "s1": "Un modelo de IA abierto leyó la pregunta: \"¿A quién le recuerdo primero que me pague, y con qué tono?\"",
+        "s1": "Qwen3 235B leyó la pregunta: \"¿A quién le recuerdo primero que me pague, y con qué tono?\"",
         "s1d": "Pidió la lista de clientes por recordar, ordenada por el código de ContaBu según el historial de pago de cada uno",
         "s2": "Redactó la respuesta a partir de esa lista",
         "s2d": "La respuesta nombró primero al cliente con la factura vencida y sugirió un tono amable",
@@ -2218,7 +2218,7 @@
     "intro": {
       "kicker": "ContaBu + PayPal · sandbox",
       "title": "Administra tu negocio desde PayPal.",
-      "body": "Para este hackathon construimos el portal para el dueño de un pequeño negocio, administrado por su bookkeeper, con PayPal en el centro: facturas que el cliente paga con tarjeta y que el dueño puede dictar desde el celular, pagos a contratistas con PayPal Payouts, y cada venta registrada por el bruto con su comisión aparte, sin contar nada dos veces. Y, dentro de Cobros, un panel de análisis hecho con AG Studio, donde el dueño ve de un vistazo quién le debe y cuánto está vencido, y le pregunta a un asistente de IA a quién cobrarle primero. Lo hicimos con las APIs de PayPal y el PayPal Agent Toolkit, y con modelos de IA abiertos: el código revisa cada cifra y el dueño confirma antes de que se envíe nada.",
+      "body": "Para este hackathon construimos el portal para el dueño de un pequeño negocio, administrado por su bookkeeper, con PayPal en el centro: facturas que el cliente paga con tarjeta y que el dueño puede dictar desde el celular, pagos a contratistas con PayPal Payouts, y cada venta registrada por el bruto con su comisión aparte, sin contar nada dos veces. Y, dentro de Cobros, un panel de análisis hecho con AG Studio, donde el dueño ve de un vistazo quién le debe y cuánto está vencido, y le pregunta a un asistente de IA a quién cobrarle primero. Lo hicimos con las APIs de PayPal y el PayPal Agent Toolkit, y con NVIDIA Nemotron y Qwen3: el código revisa cada cifra y el dueño confirma antes de que se envíe nada.",
       "sandbox": "Todo corre en el sandbox de PayPal. No se mueve dinero real.",
       "start": "Empezar la visita",
       "live": "Probar con mi propio sandbox de PayPal",
