@@ -153,11 +153,30 @@ def resolve_due(v: VoiceOut, today: date) -> tuple[Optional[date], bool]:
     return None, False
 
 
+_FIELD_NAMES = re.compile(r"\b(?:amount|concept|due_(?:in_days|weekday|day|month|year|end_of_month))\s*[:=]", re.I)
+
+
+def garbled(raw: dict) -> bool:
+    """¿El modelo escribió los nombres de los campos dentro del concepto, en vez de llenarlos?"""
+    return isinstance(raw, dict) and bool(_FIELD_NAMES.search(str(raw.get("concept") or "")))
+
+
 def _said_weekday(v: VoiceOut, text: str) -> bool:
     """¿El día de la semana que devolvió la IA está en lo que el dueño dictó (en inglés o en español)?"""
     wd = _ES_WEEKDAYS.get(_norm(v.due_weekday.strip()), _norm(v.due_weekday.strip()))
     words = set(re.findall(r"[a-z]+", _norm(text)))
     return wd in words or any(es in words for es, en in _ES_WEEKDAYS.items() if en == wd)
+
+
+_MONTHS = {"january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november",
+           "december", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec", "enero",
+           "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "setiembre", "octubre",
+           "noviembre", "diciembre"}
+
+
+def _said_month(text: str) -> bool:
+    """¿El dueño nombró un mes (en inglés o en español) o dictó una fecha con cifras ("12/10")?"""
+    return bool(_MONTHS & set(re.findall(r"[a-z]+", _norm(text)))) or bool(re.search(r"\b\d{1,2}[/-]\d{1,2}\b", text))
 
 
 def _check(raw: dict, today: date, text: str = "") -> tuple[dict, list[str]]:
@@ -172,6 +191,9 @@ def _check(raw: dict, today: date, text: str = "") -> tuple[dict, list[str]]:
     # de la semana que nadie dijo ("friday", "tuesday"), y ese día ganaba. Un día que no está en el dictado se descarta.
     if v.due_weekday and text and not _said_weekday(v, text):
         v.due_weekday = None
+    # Lo mismo con el mes: "vence el 5" o "due the 20th" a veces traían un mes que nadie dijo (uno ya pasado, o diciembre).
+    if v.due_month and text and not _said_month(text):
+        v.due_month = v.due_year = None
     if v.amount:
         try:
             a = Decimal(str(v.amount).replace(",", "").replace("$", "").strip())
@@ -226,19 +248,31 @@ def parse_voice(company_id: int, payload: VoiceIn, user: User = Depends(current_
     user_msg = f"TODAY: {today.isoformat()}\nLANGUAGE: {payload.lang}\nDICTATION: {masked}"
     # Una respuesta normal usa ~75 tokens; a veces el modelo se extiende y se queda sin espacio (✅ 1-nov: 1 de 9 con
     # max_tokens=400 → out_of_tokens). Margen amplio y UN reintento si pasa; cada intento queda registrado.
+    # 12-nov (100 dictados reales): con "[CUSTOMER], 1800 dollars for…" el modelo a veces escribe los campos DENTRO del
+    # concepto ("…due_weekday: friday, due_day: 1…") y la fecha llega vacía. Si pasa, UN reintento; si vuelve a pasar,
+    # queda ese (fecha por defecto y aviso, como antes). Cada intento queda registrado.
     reply = None
     for attempt in range(2):
         try:
-            reply = nemotron.chat_json(_SYSTEM, user_msg, VoiceOut, max_tokens=1200, reasoning=False)
-            break
+            got = nemotron.chat_json(_SYSTEM, user_msg, VoiceOut, max_tokens=1200, reasoning=False)
         except nemotron.NemotronUnavailable:
             raise HTTPException(status_code=503, detail="ai_unavailable")
         except nemotron.NemotronError as e:
             agent_calls.record(session, company, "invoice_voice", e.usage, outcome=e.code, user_id=user.id,
                                model=nemotron.model_name())
             session.commit()
+            if reply is not None:
+                break
             if e.code != "out_of_tokens" or attempt == 1:
                 raise HTTPException(status_code=502, detail="ai_failed")
+            continue
+        reply = got
+        if attempt == 0 and garbled(got.data):
+            agent_calls.record(session, company, "invoice_voice", got.usage, outcome="garbled", user_id=user.id,
+                               items_out=1)
+            session.commit()
+            continue
+        break
     fields, warnings = _check(reply.data, today, masked)
     agent_calls.record(session, company, "invoice_voice", reply.usage, user_id=user.id,
                        items_out=1, items_valid=int(not warnings or warnings == ["due_default"]))

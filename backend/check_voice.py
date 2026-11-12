@@ -31,6 +31,7 @@ from models import AgentCall, InvoiceCustomer  # noqa: E402
 fails: list[str] = []
 SEEN: list[str] = []          # lo que le llegó a la "IA"
 ANSWER: dict = {}
+QUEUE: list[dict] = []        # respuestas en orden (para el reintento); vacía → ANSWER
 
 
 def expect(label, ok, got):
@@ -41,7 +42,7 @@ def expect(label, ok, got):
 
 def fake_chat_json(system, user, schema=None, **kw):
     SEEN.append(user)
-    return nemotron.Reply(data=dict(ANSWER), usage=None, raw_text="")
+    return nemotron.Reply(data=dict(QUEUE.pop(0) if QUEUE else ANSWER), usage=None, raw_text="")
 
 
 def main() -> int:
@@ -112,7 +113,7 @@ def main() -> int:
                (r.json().get("customer") or {}).get("name"))
 
         ANSWER.update({"amount": "120.001", "due_day": 31, "due_month": 2, "due_in_days": None, "concept": ""})
-        b = client.post(url, headers=cl, json={"text": "factura a Acme por ciento veinte"}).json()
+        b = client.post(url, headers=cl, json={"text": "factura a Acme por ciento veinte, vence el 31 de febrero"}).json()
         expect("el código valida: monto raro → vacío y aviso; sin concepto → aviso; 31 de febrero → último día de febrero",
                b["fields"]["amount"] is None and b["fields"]["due_date"].endswith(("-02-28", "-02-29"))
                and {"amount_invalid", "concept_missing"} <= set(b["warnings"]), (b["fields"], b["warnings"]))
@@ -142,6 +143,23 @@ def main() -> int:
             ({"due_weekday": "friday"}, "invoice [CUSTOMER] 10 for x, due next Friday")]]
         expect("un día de la semana que no se dijo no cuenta: semana→8-nov · mañana→2-nov · miércoles→4-nov · Friday→6-nov",
                got == ["2026-11-08", "2026-11-02", "2026-11-04", "2026-11-06"], got)
+        got = [vi._check({"amount": "10", "concept": "x", **p}, d0, t)[0]["due_date"] for p, t in [
+            ({"due_day": 5, "due_month": 10}, "factura a [CUSTOMER] 10 por x, vence el 5"),
+            ({"due_day": 20, "due_month": 12, "due_in_days": 9}, "[CUSTOMER], 10 for x, due the 20th"),
+            ({"due_day": 10, "due_month": 12}, "invoice [CUSTOMER] 10 for x, due December 10th"),
+            ({"due_day": 10, "due_month": 12}, "factura a [CUSTOMER] 10 por x, vence el 10 de diciembre"),
+            ({"due_day": 10, "due_month": 12}, "invoice [CUSTOMER] 10 for x, due 12/10")]]
+        expect("un mes que no se dijo no cuenta: el 5→5-nov · the 20th→20-nov · December 10th, 10 de diciembre y 12/10→10-dic",
+               got == ["2026-11-05", "2026-11-20", "2026-12-10", "2026-12-10", "2026-12-10"], got)
+
+        # 12-nov: si el modelo escribe los campos dentro del concepto, un reintento; el segundo intento se usa.
+        n0 = len(SEEN)
+        QUEUE[:] = [{"amount": "1800", "concept": "filter replacement for [CUSTOMER], due next Friday, due_weekday: friday"},
+                    {"amount": "1800", "due_in_days": 7, "concept": "filter replacement"}]
+        b = client.post(url, headers=cl, json={"text": "Acme, 1800 dollars for filter replacement, due in a week"}).json()
+        expect("campos dentro del concepto → un reintento, y se usa el bueno (2 llamadas)",
+               len(SEEN) - n0 == 2 and b["fields"]["concept"] == "filter replacement"
+               and b["fields"]["due_date"] == (today + timedelta(days=7)).isoformat(), (len(SEEN) - n0, b["fields"]))
 
         with Session(engine) as s:
             n = s.exec(select(func.count(AgentCall.id)).where(AgentCall.company_id == company_id)

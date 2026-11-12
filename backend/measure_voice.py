@@ -3,13 +3,15 @@ MEDIR EL DICTADO (FASE 16, 12-nov-2026): 100 dictados (50 en inglés, 50 en espa
 `voice_invoice.parse_voice`, sin la base: el código enmascara al cliente, Nemotron (Nebius) extrae, el código valida y
 calcula la fecha. No escribe nada. Necesita `NEBIUS_API_KEY`; cuesta menos de un centavo (~$0.005 las 100).
 
-    cd backend && python measure_voice.py
+    cd backend && python measure_voice.py          # los 100
+    cd backend && python measure_voice.py comma    # 20 con la forma "Cliente, monto for…"
 
 Correcto = el monto exacto, la fecha exacta (la que calcula el código) y el concepto con la palabra esperada. Las fechas
 esperadas se cuentan desde hoy, así que el resultado no depende del día en que se corra.
 """
 import calendar
 import statistics
+import sys
 import unicodedata
 from datetime import date, timedelta
 from types import SimpleNamespace
@@ -69,26 +71,42 @@ for lang, tpls in (("en", EN), ("es", ES)):
         if d[0]:
             text += ", " + (d[0] if e else d[1])
         CASES.append((lang, text, a[2], d[2], k[2] if e else k[3]))
+if "comma" in sys.argv:   # `python measure_voice.py comma`: 20 dictados con la forma "Cliente, monto for…", la que más fallaba
+    CASES = []
+    for lang in ("en", "es"):
+        for j in range(10):
+            a, k, d, c = AMOUNTS[(j * 7) % 10], CONCEPTS[(j * 3) % 10], DUES[j % 13], NAMES[j % 5]
+            e = lang == "en"
+            text = (EN if e else ES)[2].format(c=c, a=a[0] if e else a[1], k=k[0] if e else k[1]) + ", " + (d[0] if e else d[1])
+            CASES.append((lang, text, a[2], d[2], k[2] if e else k[3]))
+    CASES += [("en", "Cedar Ridge Clinic, 1800 dollars for filter replacement, due next Friday", "1800.00", nxt(4), "filter"),
+              ("en", "Cedar Ridge Clinic, 780 for filter replacement, due December 10th", "780.00", on(12, 10), "filter")]
 
 def plain(s):
     return "".join(c for c in unicodedata.normalize("NFD", (s or "").lower()) if unicodedata.category(c) != "Mn")
 
-ok, lat, cost, toks, names_leaked, errors = 0, [], [], [], 0, 0
+ok, lat, cost, toks, names_leaked, errors, retries = 0, [], [], [], 0, 0, 0
 for i, (lang, text, amount, due, word) in enumerate(CASES, 1):
     named = vi.match_customers(text, CUSTOMERS)
     masked = vi.mask(text, named)
     if any(t in plain(masked) for c in named for t in vi._tokens(c.name)):
         names_leaked += 1
     msg = f"TODAY: {T.isoformat()}\nLANGUAGE: {lang}\nDICTATION: {masked}"
-    reply = None
+    reply, spent = None, []          # el mismo reintento de `parse_voice`
     for attempt in range(2):
         try:
-            reply = nemotron.chat_json(vi._SYSTEM, msg, vi.VoiceOut, max_tokens=1200, reasoning=False)
-            break
+            got = nemotron.chat_json(vi._SYSTEM, msg, vi.VoiceOut, max_tokens=1200, reasoning=False)
         except nemotron.NemotronError as e:
             last_err = e.code
-            if e.code != "out_of_tokens" or attempt == 1:
+            if reply is not None or e.code != "out_of_tokens" or attempt == 1:
                 break
+            continue
+        reply = got
+        spent.append(got.usage)
+        if attempt == 0 and vi.garbled(got.data):
+            retries += 1
+            continue
+        break
     if reply is None:
         errors += 1
         print(f"{i:3} {lang} ❌ error de la API ({last_err}) | {text}")
@@ -96,11 +114,12 @@ for i, (lang, text, amount, due, word) in enumerate(CASES, 1):
     fields, warns = vi._check(reply.data, T, masked)
     good = (fields["amount"] == amount and fields["due_date"] == due.isoformat() and word in plain(fields["concept"]))
     ok += good
-    u = reply.usage
-    lat.append(u.latency_ms / 1000); cost.append(u.cost_usd); toks.append(u.prompt_tokens + u.completion_tokens)
-    print(f"{i:3} {lang} {'✅' if good else '❌'} {u.latency_ms/1000:.2f}s ${u.cost_usd:.6f} {u.prompt_tokens + u.completion_tokens}t "
+    ms, usd, tk = (sum(x.latency_ms for x in spent), sum(x.cost_usd for x in spent),
+                   sum(x.prompt_tokens + x.completion_tokens for x in spent))
+    lat.append(ms / 1000); cost.append(usd); toks.append(tk)
+    print(f"{i:3} {lang} {'✅' if good else '❌'}{' ↻' if len(spent) > 1 else ''} {ms/1000:.2f}s ${usd:.6f} {tk}t "
           f"| {fields['amount']} {fields['due_date']} '{fields['concept']}' {warns if warns else ''}"
           + ("" if good else f" ← esperado {amount} {due} '{word}' · crudo {dict((k, v) for k, v in reply.data.items() if v not in (None, ''))}"))
-print(f"\n{ok} de {len(CASES)} correctos · errores de la API {errors} · nombres que llegaron al modelo: {names_leaked} · modelo {nemotron.model_name()}")
+print(f"\n{ok} de {len(CASES)} correctos · reintentos {retries} · errores de la API {errors} · nombres que llegaron al modelo: {names_leaked} · modelo {nemotron.model_name()}")
 print(f"tiempo {min(lat):.2f}–{max(lat):.2f} s (mediana {statistics.median(lat):.2f}) · costo ${min(cost):.6f}–${max(cost):.6f} "
       f"(total ${sum(cost):.5f}) · tokens {min(toks)}–{max(toks)}")
