@@ -18,11 +18,13 @@ let CATEGORIES: string[] = [];
 export const setAssistantCategories = (cats: string[]) => { CATEGORIES = cats; };
 // 10-nov (probado con el modelo real): en español decía "PayPal me cobró", "el contador" y "egresos". Los términos de la
 // pantalla (regla 12) van en las instrucciones.
+// 12-nov (Jose): responde en el idioma de la PREGUNTA (un juez con la pantalla en inglés puede preguntar en español), así
+// que la guía del español va siempre; el de la pantalla solo decide cuando la pregunta no deja claro el idioma.
 const SPANISH = `
-- In Spanish, speak to the owner as "tú" ("PayPal te cobró", never "me cobró"), call the bookkeeper "tu bookkeeper" (never "contador"), and use the screen's terms: "ingresos", "costos y gastos" (never "egresos", "entradas" or "salidas"), "pendiente de clasificar", "mes cerrado"; for amounts pending to classify, "depósitos" and "pagos".`;
-const glossary = (lang: string) => lang !== "es" ? "" : SPANISH + (!CATEGORIES.length ? ""
+- When you reply in Spanish, speak to the owner as "tú" ("PayPal te cobró", never "me cobró"), call the bookkeeper "tu bookkeeper" (never "contador"), and use the screen's terms: "ingresos", "costos y gastos" (never "egresos", "entradas" or "salidas"), "pendiente de clasificar", "mes cerrado"; for amounts pending to classify, "depósitos" and "pagos".`;
+const glossary = () => SPANISH + (!CATEGORIES.length ? ""
   : `
-- Name accounting categories in Spanish exactly as the screen does: ${CATEGORIES
+- When you reply in Spanish, name accounting categories exactly as the screen does: ${CATEGORIES
       .map((c) => `"${c}" = "${i18n.t(`cat.${c}`, { lng: "es", defaultValue: c })}"`).join("; ")}.`);
 
 const INSTRUCTIONS = (lang: string) => `You are the finance assistant of a small business that gets paid with PayPal. You live in its ContaBu portal and answer questions about its finances: income and costs by month and by category, its invoices and who owes it, its payments to contractors, and the periods its bookkeeper closed.
@@ -42,7 +44,7 @@ Rules:
 - To show the owner something on the dashboard, call view_schema and then add_page_filter with the exact field id and values; remove_page_filter clears it.
 - Write every amount in US dollars with a dollar sign, comma thousands and two decimals, for example $2,330.00, also in Spanish.
 - Keep answers short: two to five sentences or a short list. Use the customer names and invoice numbers from the tools.
-- Always reply in ${lang === "es" ? "Spanish" : "English"}, even if the tools return English.${glossary(lang)}
+- Reply in the language of the owner's last question (Spanish or English), even if the tools return English or the screen is in another language. Only if the question does not make the language clear (for example, just a name or a number), reply in ${lang === "es" ? "Spanish" : "English"}.${glossary()}
 - Call the tools first, then answer once. Do not narrate what you are about to do.`;
 
 const id = (p: string) => `${p}_${Math.random().toString(36).slice(2, 10)}`;

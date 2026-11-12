@@ -172,7 +172,7 @@ class StudioTurn(BaseModel):
     tools: list[dict[str, Any]] = Field(default_factory=list)
     toolChoice: Optional[Union[str, dict[str, Any]]] = None
     model: Optional[dict[str, Any]] = None      # `{id}` del selector de modelos del chat (solo de STUDIO_MODELS)
-    lang: str = "en"                            # el idioma del aviso cuando una cifra no se puede verificar
+    lang: str = "en"                            # el de la pantalla: solo manda si la pregunta no deja ver su idioma
 
 
 def _text_of(content: Any) -> str:
@@ -227,6 +227,36 @@ def _new_question(items: list[dict]) -> bool:
     return last.get("role") == "user" and last.get("type", "message") == "message"
 
 
+# 12-nov (Jose): el asistente responde en el idioma de la PREGUNTA, no en el de la pantalla. La instrucción sola no bastó
+# (pantalla en español + "How much did PayPal charge me in fees?" → respondió en español), así que el CÓDIGO decide el
+# idioma de la última pregunta y se lo dice al modelo; si no se distingue ("Maple Grove"), manda el de la pantalla.
+_ES_WORDS = {"que", "cuanto", "cuantos", "quien", "quienes", "cual", "cuales", "como", "donde", "cuando", "mi", "mis",
+             "te", "de", "del", "la", "las", "los", "el", "en", "por", "para", "con", "es", "son", "fue", "y", "hay",
+             "esta", "estan", "debe", "deben", "pagan", "gaste", "gane", "mes", "meses", "factura", "facturas", "cliente",
+             "clientes", "comisiones", "cobro", "recuerdo", "ingresos", "gastos", "mejor", "dinero"}
+_EN_WORDS = {"what", "how", "who", "which", "where", "when", "much", "many", "my", "i", "the", "of", "in", "on", "for",
+             "to", "is", "are", "was", "did", "do", "does", "with", "and", "pay", "paid", "owe", "owes", "month",
+             "months", "invoice", "invoices", "customer", "customers", "fees", "spend", "spent", "earn", "earned",
+             "remind", "best", "money", "income", "costs"}
+_ES_MARKS = re.compile(r"[¿¡ñáéíóú]", re.IGNORECASE)
+_PLAIN = str.maketrans("áéíóúü", "aeiouu")
+
+
+def question_lang(items: list[dict]) -> Optional[str]:
+    """El idioma ("es" o "en") de la última pregunta del dueño, o None si no se distingue."""
+    text = next((_text_of(it.get("content")) for it in reversed(items)
+                 if it.get("role") == "user" and it.get("type", "message") == "message"), "")
+    if _ES_MARKS.search(text):
+        return "es"
+    words = re.findall(r"[a-zñ]+", text.lower().translate(_PLAIN))
+    es, en = sum(w in _ES_WORDS for w in words), sum(w in _EN_WORDS for w in words)
+    return "es" if es > en else "en" if en > es else None
+
+
+_REPLY_IN = {"es": "\n- The owner's last question is in Spanish: reply in Spanish.",
+             "en": "\n- The owner's last question is in English: reply in English."}
+
+
 def to_tool_choice(choice: Union[str, dict, None]) -> Union[str, dict, None]:
     if isinstance(choice, dict) and choice.get("name"):
         return {"type": "function", "function": {"name": choice["name"]}}
@@ -265,10 +295,10 @@ def studio_turn(company_id: int, payload: StudioTurn, user: User = Depends(curre
         raise HTTPException(status_code=429, detail="ai_cap_reached")
 
     model = _model(payload.model)
-    messages = to_messages(payload.instructions, payload.input)
+    lang = question_lang(payload.input) or ("es" if payload.lang.startswith("es") else "en")
+    messages = to_messages((payload.instructions or "") + _REPLY_IN[lang], payload.input)
     tools = to_tools(payload.tools)
     choice = to_tool_choice(payload.toolChoice)
-    lang = "es" if payload.lang.startswith("es") else "en"
 
     # EL CICLO EN EL SERVIDOR (8-nov): si el modelo pide herramientas del SERVIDOR (SQL, `studio_tools`), este backend las
     # ejecuta y vuelve a llamar al modelo, hasta que responda o pida una herramienta del navegador (las de AG Studio o abrir
