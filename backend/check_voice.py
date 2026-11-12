@@ -127,6 +127,21 @@ def main() -> int:
         got = [vi.resolve_due(vi.VoiceOut(**p), d0)[0] for p, _ in cases]
         expect("fechas: viernes→6-nov · el 15→15-nov · el 1→1-dic · 5 de dic · 1 de oct→2027 · fin de mes · +14 · domingo→8-nov",
                got == [w for _, w in cases], [g.isoformat() for g in got])
+        # 12-nov (lo que devolvió Nemotron real): el día en español, y un día que no se entiende junto a una parte buena.
+        cases = [({"due_weekday": "lunes"}, (date(2026, 11, 2), False)), ({"due_weekday": "Miércoles"}, (date(2026, 11, 4), False)),
+                 ({"due_weekday": "tomorrow", "due_in_days": 1}, (date(2026, 11, 2), False)),
+                 ({"due_weekday": "someday"}, (None, True))]
+        got = [vi.resolve_due(vi.VoiceOut(**p), d0) for p, _ in cases]
+        expect("fechas: lunes→2-nov · Miércoles→4-nov · 'tomorrow' con +1→2-nov · un día que no existe, solo → inválida",
+               got == [w for _, w in cases], got)
+        # Un día de la semana que el dueño no dijo se descarta; uno que sí dijo (en inglés o en español) se usa.
+        got = [vi._check({"amount": "10", "concept": "x", **p}, d0, t)[0]["due_date"] for p, t in [
+            ({"due_in_days": 7, "due_weekday": "friday"}, "invoice [CUSTOMER] 10 for x, due in a week"),
+            ({"due_in_days": 1, "due_weekday": "tuesday"}, "factura a [CUSTOMER] 10 por x, vence mañana"),
+            ({"due_weekday": "wednesday"}, "factura a [CUSTOMER] 10 por x, vence el miércoles"),
+            ({"due_weekday": "friday"}, "invoice [CUSTOMER] 10 for x, due next Friday")]]
+        expect("un día de la semana que no se dijo no cuenta: semana→8-nov · mañana→2-nov · miércoles→4-nov · Friday→6-nov",
+               got == ["2026-11-08", "2026-11-02", "2026-11-04", "2026-11-06"], got)
 
         with Session(engine) as s:
             n = s.exec(select(func.count(AgentCall.id)).where(AgentCall.company_id == company_id)

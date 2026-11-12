@@ -110,6 +110,7 @@ Do not invent anything that was not said."""
 
 
 _WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+_ES_WEEKDAYS = dict(zip(["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"], _WEEKDAYS))
 
 
 def resolve_due(v: VoiceOut, today: date) -> tuple[Optional[date], bool]:
@@ -135,10 +136,14 @@ def resolve_due(v: VoiceOut, today: date) -> tuple[Optional[date], bool]:
                 d = clamp(y, m, v.due_day)
             return d, False
         if v.due_weekday:
-            wd = (v.due_weekday or "").strip().lower()
-            if wd not in _WEEKDAYS:
+            # 12-nov (Nemotron real, 4 tandas de 20): en español devolvía "lunes", y con "tomorrow" ponía bien
+            # due_in_days=1 y además due_weekday="tomorrow". El código acepta el día en español y, si el día no se
+            # entiende, usa las otras partes que sí llegaron; solo sin ninguna es una fecha inválida.
+            wd = _ES_WEEKDAYS.get(_norm(v.due_weekday.strip()), _norm(v.due_weekday.strip()))
+            if wd in _WEEKDAYS:
+                return today + timedelta(days=(_WEEKDAYS.index(wd) - today.weekday() - 1) % 7 + 1), False
+            if not v.due_end_of_month and v.due_in_days is None:
                 return None, True
-            return today + timedelta(days=(_WEEKDAYS.index(wd) - today.weekday() - 1) % 7 + 1), False
         if v.due_end_of_month:
             return clamp(today.year, today.month, 31), False
         if v.due_in_days is not None:
@@ -148,7 +153,14 @@ def resolve_due(v: VoiceOut, today: date) -> tuple[Optional[date], bool]:
     return None, False
 
 
-def _check(raw: dict, today: date) -> tuple[dict, list[str]]:
+def _said_weekday(v: VoiceOut, text: str) -> bool:
+    """¿El día de la semana que devolvió la IA está en lo que el dueño dictó (en inglés o en español)?"""
+    wd = _ES_WEEKDAYS.get(_norm(v.due_weekday.strip()), _norm(v.due_weekday.strip()))
+    words = set(re.findall(r"[a-z]+", _norm(text)))
+    return wd in words or any(es in words for es, en in _ES_WEEKDAYS.items() if en == wd)
+
+
+def _check(raw: dict, today: date, text: str = "") -> tuple[dict, list[str]]:
     """El código valida lo que extrajo la IA. Devuelve (campos limpios, avisos). Nunca inventa un valor."""
     warnings: list[str] = []
     out: dict = {"amount": None, "due_date": None, "concept": None}
@@ -156,6 +168,10 @@ def _check(raw: dict, today: date) -> tuple[dict, list[str]]:
         v = VoiceOut.model_validate(raw if isinstance(raw, dict) else {})
     except Exception:
         return out, ["unreadable"]
+    # 12-nov (Nemotron real, 100 dictados): con "in a week" o "mañana" a veces devolvía bien due_in_days y además un día
+    # de la semana que nadie dijo ("friday", "tuesday"), y ese día ganaba. Un día que no está en el dictado se descarta.
+    if v.due_weekday and text and not _said_weekday(v, text):
+        v.due_weekday = None
     if v.amount:
         try:
             a = Decimal(str(v.amount).replace(",", "").replace("$", "").strip())
@@ -223,7 +239,7 @@ def parse_voice(company_id: int, payload: VoiceIn, user: User = Depends(current_
             session.commit()
             if e.code != "out_of_tokens" or attempt == 1:
                 raise HTTPException(status_code=502, detail="ai_failed")
-    fields, warnings = _check(reply.data, today)
+    fields, warnings = _check(reply.data, today, masked)
     agent_calls.record(session, company, "invoice_voice", reply.usage, user_id=user.id,
                        items_out=1, items_valid=int(not warnings or warnings == ["due_default"]))
     session.commit()
