@@ -79,11 +79,17 @@ _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 # 8-nov (revisión como cliente): en español el modelo escribió "2.330" (punto de miles, coma decimal) y la revisión lo leyó
 # como 2.33 y ocultó una respuesta correcta. Ese formato se captura entero ("2.330,50") y se prueba de las dos maneras.
 _EURO_RE = re.compile(r"^\$?\s?-?\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$")
-_AMOUNT_RE = re.compile(r"(\$\s?-?\d{1,3}(?:\.\d{3})+,\d{1,2}|-?\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?(?![\d.])|\$\s?-?\d[\d,]*(?:\.\d+)?|-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+\.\d+|(?<![\d-])(?!0)(?!(?:19|20)\d{2}\b)\d{4,}(?![\d-]))")
+# 12-nov (revisión como juez): el modelo escribió "$2.330.00", punto de miles Y punto decimal. Se lee como un monto entero
+# (antes la revisión tomaba "$2.330" y dejaba ".00" suelto) y, ya verificado, se reescribe como "$2,330.00" (`us_money`).
+_MIXED_RE = re.compile(r"\$?\s?-?\d{1,3}(?:\.\d{3})+\.\d{2}(?![\d.])")
+_AMOUNT_RE = re.compile(r"(\$?\s?-?\d{1,3}(?:\.\d{3})+\.\d{2}(?![\d.])|\$\s?-?\d{1,3}(?:\.\d{3})+,\d{1,2}|-?\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?(?![\d.])|\$\s?-?\d[\d,]*(?:\.\d+)?|-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+\.\d+|(?<![\d-])(?!0)(?!(?:19|20)\d{2}\b)\d{4,}(?![\d-]))")
 _ANY_NUM_RE = re.compile(r"-?\d+(?:\.\d+)?")
 
 
 def _num(text: str) -> Optional[float]:
+    if _MIXED_RE.fullmatch(text.strip()):
+        whole, cents = text.replace("$", "").strip().rsplit(".", 1)
+        return round(float(whole.replace(".", "") + "." + cents), 2)
     try:
         return round(float(text.replace("$", "").replace(",", "").strip()), 2)
     except ValueError:
@@ -123,6 +129,18 @@ def _euro(raw: str) -> Optional[float]:
         return round(float(raw.replace("$", "").strip().replace(".", "").replace(",", ".")), 2)
     except ValueError:
         return None
+
+
+def us_money(text: str) -> str:
+    """Los montos con "$" en formato de EE. UU. ($2,330.00), como pide la instrucción del asistente, también en español:
+    el mezclado ("$2.330.00") y el europeo con decimales ("$2.330,50"). Se aplica a una respuesta YA verificada."""
+    def fix(read):
+        def one(m: re.Match) -> str:
+            v = read(m.group(0))
+            return m.group(0) if v is None else ("-" if v < 0 else "") + f"${abs(v):,.2f}"
+        return one
+    text = re.sub(r"\$\s?-?\d{1,3}(?:\.\d{3})+\.\d{2}(?![\d.])", fix(_num), text)
+    return re.sub(r"\$\s?-?\d{1,3}(?:\.\d{3})+,\d{2}(?!\d)", fix(_euro), text)
 
 
 def unverified_amounts(text: str, items: list[dict]) -> list[str]:
@@ -338,6 +356,8 @@ def studio_turn(company_id: int, payload: StudioTurn, user: User = Depends(curre
                 if bad:
                     unverified += bad
                     o["content"][0]["text"] = _UNVERIFIED[lang].format(figures=", ".join(bad))
+                else:
+                    o["content"][0]["text"] = us_money(text)
         steps.append({"kind": "check", "figures": sum(len(amounts_in(o["content"][0]["text"])) for o in output
                                                       if o["type"] == "message") if not unverified else 0,
                       "unverified": unverified})
