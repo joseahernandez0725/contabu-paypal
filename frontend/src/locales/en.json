@@ -2139,7 +2139,8 @@
         "other": "PayPal returned an error. Try again.",
         "bad_day": "Choose a date within the last year, not in the future.",
         "no_auto_reminders": "PayPal has no automatic reminders scheduled for this invoice (check the rules in Settings).",
-        "auto_reminders_already_stopped": "They were already stopped."
+        "auto_reminders_already_stopped": "They were already stopped.",
+        "demo_invoice": "This is a sample invoice from the seeded book: it does not exist in PayPal, so it cannot be reminded, cancelled or paid. To try it for real, create a new invoice and connect your sandbox app in Accounts."
       },
       "autoStop": "Stop this invoice's automatic reminders",
       "autoStopped": "Automatic reminders stopped for this invoice.",

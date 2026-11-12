@@ -40,6 +40,18 @@ from rules import load_rules
 router = APIRouter()
 
 OPEN = ("SENT", "UNPAID", "PARTIALLY_PAID", "PAYMENT_PENDING", "SCHEDULED")   # enviadas y sin cobrar del todo
+# Las facturas del libro sembrado (`demo_paypal.py`, ids "INV2-DEMO-…") no existen en PayPal (12-nov): "Actualizar estado"
+# las salta y cobrar, recordar, cancelar o registrar un pago sobre ellas responde 409 `demo_invoice`, no un error de PayPal.
+DEMO_PREFIX = "INV2-DEMO-"
+
+
+def is_demo(inv: Invoice) -> bool:
+    return (inv.paypal_invoice_id or "").startswith(DEMO_PREFIX)
+
+
+def no_demo(inv: Invoice) -> None:
+    if is_demo(inv):
+        raise HTTPException(status_code=409, detail="demo_invoice")
 REFUNDED_ANY = ("REFUNDED", "MARKED_AS_REFUNDED", "PARTIALLY_REFUNDED", "REFUNDED_EXTERNAL")
 REFUND_CODES = ("T1107", "T1106", "T1201")   # reembolso, reversión, contracargo (`paypal.rows_for`)
 PAID_ANY = ("PAID", "MARKED_AS_PAID", "PAID_EXTERNAL")   # ✅ especificación: cobrada por PayPal o marcada como cobrada fuera
@@ -512,6 +524,7 @@ def cancel_invoice(company_id: int, invoice_id: int, payload: CancelIn, user: Us
         raise HTTPException(status_code=404, detail="invoice not found")
     if inv.status not in OPEN or inv.status == "PARTIALLY_PAID":
         raise HTTPException(status_code=409, detail="invoice_not_open")
+    no_demo(inv)
     _connect(session, company_id)
     try:
         paypal.api("POST", f"/v2/invoicing/invoices/{inv.paypal_invoice_id}/cancel",
@@ -593,7 +606,8 @@ def refresh_invoices(company_id: int, user: User = Depends(current_user), sessio
             invoice_series.sync(session, company_id)   # las facturas que generaron las series (4-nov)
         except paypal.PayPalError as e:
             _fail(e)
-    invs = session.exec(select(Invoice).where(Invoice.company_id == company_id).where(Invoice.status.in_(OPEN))).all()
+    invs = [i for i in session.exec(select(Invoice).where(Invoice.company_id == company_id).where(Invoice.status.in_(OPEN))).all()
+            if not is_demo(i)]      # las sembradas no están en PayPal: se quedan como están
     if invs:
         _connect(session, company_id)
     changed = 0

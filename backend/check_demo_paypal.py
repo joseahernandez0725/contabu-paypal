@@ -5,7 +5,9 @@ PRUEBA DEL LIBRO SEMBRADO DE `paypal.contabu.com` (FASE 16 Paso 7, 2-nov-2026), 
 
 Siembra la oficina de un juez y la de la visita, y comprueba: un solo libro · tres meses cerrados que el dueño ve · la
 venta por el bruto, sin contar dos veces el depósito ni la compra · el libro del juez SIN conexión y la visita CON ella ·
-que quien opera el libro actúa como dueño solo con `PAYPAL_DEMO`. Borra lo que crea. Código de salida 1 si algo falla.
+las dos facturas abiertas (una vencida y una por vencer) en los DOS libros, que "Actualizar estado" no las toca aunque el
+juez conecte su app y que cobrarlas responde `demo_invoice` (12-nov) · que quien opera el libro actúa como dueño solo con
+`PAYPAL_DEMO`. No guarda nada (rollback al final). Código de salida 1 si algo falla.
 """
 
 import os
@@ -14,6 +16,9 @@ from decimal import Decimal
 
 os.environ.setdefault("AUTH_DEV_MODE", "true")
 
+from datetime import date, timedelta  # noqa: E402
+
+from fastapi import HTTPException  # noqa: E402
 from sqlalchemy import func  # noqa: E402
 from sqlmodel import Session, select  # noqa: E402
 
@@ -52,6 +57,7 @@ def section(s: Session, company_id: int, at: AccountType, account=None) -> Decim
 
 def main_check() -> int:
     with Session(engine) as s:
+        s.commit = s.flush   # 12-nov: "Actualizar estado" y otras rutas hacen commit; aquí nada se guarda (rollback al final)
         judge = office(s, "checkdemo-judge", False)
         tour = office(s, "checkdemo-tour", True)
         s.flush()
@@ -85,10 +91,64 @@ def main_check() -> int:
         conn = lambda c: s.exec(select(PayPalConnection).where(PayPalConnection.company_id == c.id)).first()  # noqa: E731
         expect("el libro del juez NO viene conectado", conn(judge) is None, conn(judge))
         expect("la visita SÍ viene conectada", conn(tour) is not None and conn(tour).mode == "first_party", "first_party")
-        open_inv = lambda c: s.exec(select(func.count(Invoice.id)).where(Invoice.company_id == c.id)  # noqa: E731
-                                    .where(Invoice.status == "SENT")).one()
-        expect("las facturas abiertas (ids inventados) solo en la visita", (open_inv(judge), open_inv(tour)) == (0, 1),
-               (open_inv(judge), open_inv(tour)))
+        # Las facturas abiertas (12-nov): en los DOS libros, una vencida y una por vencer, de clientes distintos.
+        import invoice_offline
+        import invoice_reminders
+        import invoices
+        today = date.today()
+        for name, c in (("juez", judge), ("visita", tour)):
+            opn = s.exec(select(Invoice).where(Invoice.company_id == c.id).where(Invoice.status == "SENT")
+                         .order_by(Invoice.due_date)).all()
+            late = [i for i in opn if i.due_date < today]
+            ahead = [i for i in opn if i.due_date > today + timedelta(days=33)]   # sigue "por vencer" el 15-dic
+            expect(f"{name}: una factura vencida y una por vencer, de clientes distintos",
+                   len(opn) == 2 and len(late) == 1 and len(ahead) == 1 and late[0].customer_id != ahead[0].customer_id,
+                   [(i.number, str(i.due_date)) for i in opn])
+            expect(f"{name}: son de ejemplo (no existen en PayPal)", all(invoices.is_demo(i) for i in opn),
+                   [i.paypal_invoice_id for i in opn])
+            expect(f"{name}: ninguna se envió en el futuro", all(i.sent_at.date() <= today for i in opn),
+                   [str(i.sent_at.date()) for i in opn])
+        owner = s.get(User, judge.user_id)
+        # El juez conecta su propia app: "Actualizar estado" no llama a PayPal por las sembradas ni las cambia.
+        s.add(PayPalConnection(company_id=judge.id, mode="own_keys", client_id="check-id", client_secret_enc="x"))
+        s.flush()
+        called = []
+        real_api = invoices.paypal.api
+        invoices.paypal.api = lambda *a, **k: called.append(a) or {}
+        try:
+            view = invoices.refresh_invoices(judge.id, owner, s)
+        finally:
+            invoices.paypal.api = real_api
+        still = s.exec(select(func.count(Invoice.id)).where(Invoice.company_id == judge.id).where(Invoice.status == "SENT")).one()
+        expect("Actualizar estado no consulta PayPal por las sembradas ni las borra", not called and still == 2 and view["changed"] == 0,
+               (len(called), still, view["changed"]))
+        # Cobrar, recordar, el QR, cancelar o registrar un pago sobre una sembrada: 409 `demo_invoice`, no un error de PayPal.
+        late = s.exec(select(Invoice).where(Invoice.company_id == judge.id).where(Invoice.status == "SENT")
+                      .order_by(Invoice.due_date)).first()
+
+        def refused(fn) -> str:
+            try:
+                fn()
+            except HTTPException as e:
+                return str(e.detail)
+            return "no la rechazó"
+        tries = {
+            "recordar": lambda: invoice_reminders.send_reminder(judge.id, late.id, owner, s),
+            "QR": lambda: invoice_reminders.invoice_qr(judge.id, late.id, owner, s),
+            "cancelar": lambda: invoices.cancel_invoice(judge.id, late.id, invoices.CancelIn(notify=False), owner, s),
+            "pago fuera de PayPal": lambda: invoice_offline.record_payment(
+                judge.id, late.id, invoice_offline.OfflineIn(method="cash", day=today.isoformat(), note=""), owner, s),
+        }
+        was = demo.PAYPAL_DEMO
+        try:
+            demo.PAYPAL_DEMO = True          # en el demo, quien opera el libro actúa como dueño (como en el sitio publicado)
+            got = {k: refused(fn) for k, fn in tries.items()}
+        finally:
+            demo.PAYPAL_DEMO = was
+        expect("cobrar una sembrada responde demo_invoice (recordar, QR, cancelar, pago fuera)",
+               all(v == "demo_invoice" for v in got.values()), got)
+        expect("el borrador del mensaje personal sí la acepta (solo IA, no PayPal)",
+               invoice_reminders._open_invoice(s, judge.id, late.id, demo_ok=True).id == late.id, "ok")
         snap = s.exec(select(MonthClose).where(MonthClose.company_id == judge.id).order_by(MonthClose.month)).first().snapshot
         expect("la foto del mes trae las ventas", any(r["category"] == "Gross receipts or sales" for r in snap["in"]), "ok")
 

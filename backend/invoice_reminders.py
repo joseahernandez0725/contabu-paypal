@@ -36,7 +36,7 @@ import nemotron
 import paypal
 from auth import current_user, owned_company
 from db import get_session
-from invoices import OPEN, _connect, _fail, _owner_only, _view, payer_history
+from invoices import OPEN, _connect, _fail, _owner_only, _view, is_demo, no_demo, payer_history
 from models import Company, Invoice, InvoiceCustomer, User
 
 router = APIRouter()
@@ -47,12 +47,15 @@ _MONTHS_ES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "a
               "noviembre", "diciembre")
 
 
-def _open_invoice(session: Session, company_id: int, invoice_id: int) -> Invoice:
+def _open_invoice(session: Session, company_id: int, invoice_id: int, *, demo_ok: bool = False) -> Invoice:
+    """`demo_ok`: el borrador del mensaje personal sí funciona con una factura sembrada (no llama a PayPal)."""
     inv = session.get(Invoice, invoice_id)
     if inv is None or inv.company_id != company_id:
         raise HTTPException(status_code=404, detail="invoice not found")
     if inv.status not in OPEN or not inv.paypal_invoice_id:
         raise HTTPException(status_code=409, detail="invoice_not_open")
+    if not demo_ok:
+        no_demo(inv)
     return inv
 
 
@@ -176,7 +179,7 @@ def draft_reminder(company_id: int, invoice_id: int, payload: DraftIn, user: Use
                    session: Session = Depends(get_session)):
     """Un borrador de mensaje personal. No se envía nada: el dueño lo revisa, lo edita y lo manda desde su correo."""
     company: Company = _owner_only(company_id, user, session)
-    inv = _open_invoice(session, company_id, invoice_id)
+    inv = _open_invoice(session, company_id, invoice_id, demo_ok=True)
     lang = "es" if payload.lang == "es" else "en"
     # "auto" (5-nov): el tono lo elige el CÓDIGO con el historial de pago del cliente (`invoices.payer_history`).
     payer = payer_history(session, company_id).get(inv.customer_id) if inv.customer_id else None
@@ -214,7 +217,7 @@ def draft_reminder(company_id: int, invoice_id: int, payload: DraftIn, user: Use
               "business": company.name, "number": inv.number or str(inv.id),
               "amount": f"${inv.amount:,.2f} {inv.currency}", "due_date": _long_date(inv.due_date, lang),
               "days_overdue": _days(max((today - inv.due_date).days, 0), lang),
-              "link": inv.recipient_view_url or ""}
+              "link": inv.recipient_view_url or ("[PayPal payment link]" if is_demo(inv) else "")}
     subject, body = fill(draft.subject, values), fill(draft.body, values)
     mailto = (f"mailto:{c.email}?subject={quote(subject)}&body={quote(body)}" if c else None)
     u = reply.usage or nemotron.Usage(model=nemotron.model_name())

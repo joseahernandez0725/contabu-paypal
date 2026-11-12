@@ -30,7 +30,7 @@ import paypal
 from auth import console_company, current_user, owned_company
 from corrections import record_change, snapshot
 from db import get_session
-from invoices import OPEN, PAID_ANY, _apply_state, _connect, _fail, _now, _owner_only, _view
+from invoices import OPEN, PAID_ANY, _apply_state, _connect, _fail, _now, _owner_only, _view, no_demo
 from models import (AccountType, Company, Invoice, InvoiceCustomer, InvoiceOffline, PayPalTransferMatch, Transaction,
                     User)
 
@@ -125,6 +125,7 @@ def _invoice(session: Session, company_id: int, invoice_id: int) -> Invoice:
     inv = session.get(Invoice, invoice_id)
     if inv is None or inv.company_id != company_id or not inv.paypal_invoice_id:
         raise HTTPException(status_code=404, detail="invoice not found")
+    no_demo(inv)
     return inv
 
 

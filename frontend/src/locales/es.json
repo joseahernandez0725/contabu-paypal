@@ -2269,7 +2269,8 @@
         "other": "PayPal devolvió un error. Inténtalo de nuevo.",
         "bad_day": "Elige una fecha del último año, no futura.",
         "no_auto_reminders": "PayPal no tiene recordatorios automáticos programados para esta factura (revisa las reglas en Configuración).",
-        "auto_reminders_already_stopped": "Ya estaban detenidos."
+        "auto_reminders_already_stopped": "Ya estaban detenidos.",
+        "demo_invoice": "Es una factura de ejemplo del libro sembrado: no existe en PayPal, así que no se puede recordar, cancelar ni cobrar. Para probarlo de verdad, crea una factura nueva y conecta tu app de sandbox en Cuentas."
       },
       "autoStop": "Detener los recordatorios automáticos de esta factura",
       "autoStopped": "Recordatorios automáticos detenidos para esta factura.",

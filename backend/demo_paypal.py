@@ -7,8 +7,10 @@ su cargo y facturas cobradas. La visita guiada lo lleva `linked` a la cuenta de 
 no hay conexión: entra con las credenciales de su propia app.
 
 Las filas pasan por el mismo camino que una sincronización real (`paypal.rows_for` → `paypal.insert_row`). Los ids son
-inventados ("DEMO…"): nada de esto existe en PayPal, por eso las facturas abiertas solo van en la visita, que no consulta.
-Solo `flush()`: el commit es de quien llama.
+inventados ("DEMO…"): nada de esto existe en PayPal. Las dos facturas abiertas (una vencida y una por vencer) van en
+TODOS los libros desde el 12-nov, también en el del juez, para que Cobros > Análisis tenga a quién cobrarle; con fechas
+relativas al día en que se siembra el libro, y `invoices.is_demo` hace que "Actualizar estado" las salte y que cobrarlas
+responda `demo_invoice` en vez de un error de PayPal. Solo `flush()`: el commit es de quien llama.
 """
 
 from datetime import date, datetime, timedelta, timezone
@@ -38,6 +40,10 @@ PAID_INVOICES = [(0, "Rooftop unit repair", "1850.00", date(2026, 7, 9)),
 REFUND = (2, "-125.00", date(2026, 8, 25))
 WITHDRAWALS = [("1800.00", date(2026, 7, 28)), ("2200.00", date(2026, 9, 21))]
 PURCHASE = ("Delta Valley Parts", "312.40", date(2026, 8, 12))
+# Las facturas abiertas (12-nov): (cliente, número, concepto, monto, días desde hoy al vencimiento). La vencida sigue
+# vencida y la otra sigue "por vencer" durante la calificación (1 al 15-dic) aunque el libro se siembre hoy.
+OPEN_INVOICES = [(0, "0007", "Chiller tune-up", "2150.00", -27),
+                 (1, "0008", "Filter replacement", "780.00", 45)]
 CLOSED = [date(2026, 7, 1), date(2026, 8, 1), date(2026, 9, 1)]
 
 # ── El libro del BANCO (5-nov, revisión 1 del demo; plan aprobado por Jose) ──────────────────────────────────────
@@ -223,13 +229,20 @@ def seed(session: Session, firm: Firm, owner: User, *, linked: bool) -> list[Com
         session.add(MonthClose(company_id=company.id, month=m, closed_by_user_id=owner.id,
                                snapshot=month_close.build_snapshot(session, company.id, m)))
 
+    import invoices   # aquí: `invoices` importa los routers de FastAPI, que este módulo no necesita al cargarse
+    today = date.today()
+    for who, number, concept, amount, due_in in OPEN_INVOICES:
+        due = today + timedelta(days=due_in)
+        sent = min(due - timedelta(days=30), today - timedelta(days=3))   # nunca en el futuro
+        session.add(Invoice(company_id=company.id, customer_id=customers[who].id,
+                            paypal_invoice_id=f"{invoices.DEMO_PREFIX}{number}", number=number, concept=concept,
+                            amount=Decimal(amount), due_date=due, status="SENT",
+                            sent_at=datetime(sent.year, sent.month, sent.day, 17, tzinfo=timezone.utc),
+                            created_by_user_id=owner.id))
     if linked:
         session.add(PayPalConnection(company_id=company.id, mode="first_party", environment=paypal.environment(),
                                      last_synced_at=datetime.now(timezone.utc).replace(tzinfo=None),
                                      connected_by_user_id=owner.id))
-        session.add(Invoice(company_id=company.id, customer_id=customers[0].id, paypal_invoice_id="INV2-DEMO-OPEN",
-                            number="0007", concept="Chiller tune-up", amount=Decimal("2150.00"), due_date=date(2026, 10, 15),
-                            status="SENT", sent_at=datetime(2026, 9, 30, 17, tzinfo=timezone.utc), created_by_user_id=owner.id))
     session.flush()
     return [company]
 

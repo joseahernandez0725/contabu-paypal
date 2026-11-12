@@ -47,13 +47,14 @@ export default function InvoiceCollect({ inv, busy, onView, autoQr = false, read
     try { after(await fn()); }
     catch (e) {
       const c = e instanceof Error ? e.message : "";
-      setErr(t(`owner.collect.err.${["reminded_recently", "ai_cap_reached", "ai_failed", "ai_unavailable", "invoice_not_open", "bad_day", "no_auto_reminders", "auto_reminders_already_stopped", "bad_amount"].includes(c) ? c : "other"}`));
+      setErr(t(`owner.collect.err.${["reminded_recently", "ai_cap_reached", "ai_failed", "ai_unavailable", "invoice_not_open", "bad_day", "no_auto_reminders", "auto_reminders_already_stopped", "bad_amount", "demo_invoice"].includes(c) ? c : "other"}`));
     } finally { setWorking(""); }
   }
 
   // Cobro con tarjeta en persona (3-nov): la factura recién enviada abre directo con su QR en pantalla.
   useEffect(() => {
-    if (autoQr) invoiceQR(inv.id).then((r) => setQr(r.png_base64)).catch(() => setErr(t("owner.collect.err.other")));
+    if (autoQr) invoiceQR(inv.id).then((r) => setQr(r.png_base64))
+      .catch((e) => setErr(t(`owner.collect.err.${e instanceof Error && e.message === "demo_invoice" ? "demo_invoice" : "other"}`)));
   }, [autoQr, inv.id, t]);
 
   const mailto = msg && inv.customer

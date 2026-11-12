@@ -488,7 +488,7 @@ function CancelInvoice({ inv, busy, onView }: { inv: OwnerInvoice; busy: boolean
       <button disabled={busy || working} className={BTN_SMALL_PRIMARY} onClick={async () => {
         setWorking(true); setErr(null);
         try { onView(await cancelInvoice(inv.id, notify)); setOpen(false); }
-        catch { setErr(t("owner.collect.err.other")); }
+        catch (e) { setErr(t(`owner.collect.err.${e instanceof Error && e.message === "demo_invoice" ? "demo_invoice" : "other"}`)); }
         finally { setWorking(false); }
       }}>{working ? "…" : t("owner.invoices.cancelDo")}</button>
       <button disabled={working} className={BTN_SECONDARY} onClick={() => setOpen(false)}>{t("owner.invoices.keep")}</button>
@@ -525,7 +525,7 @@ function RefundOffline({ inv, busy, onView }: { inv: OwnerInvoice; busy: boolean
       <button disabled={busy || working || !d} className={BTN_SMALL_PRIMARY} onClick={async () => {
         setWorking(true); setErr(null);
         try { onView(await recordOfflineRefund(inv.id, method, d, amount.trim())); setOpen(false); }
-        catch { setErr(t("owner.collect.err.other")); }
+        catch (e) { setErr(t(`owner.collect.err.${e instanceof Error && e.message === "demo_invoice" ? "demo_invoice" : "other"}`)); }
         finally { setWorking(false); }
       }}>{working ? "…" : t("owner.offline.refundConfirm")}</button>
       <button disabled={working} className={BTN_SECONDARY} onClick={() => setOpen(false)}>{t("owner.invoices.cancel")}</button>
